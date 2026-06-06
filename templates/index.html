@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Faster-Whisper Speech-to-Text</title>
+    <link rel="stylesheet" id="css">
+</head>
+<body>
+    <div id="app">
+        
+        <div id="optionsPanel">
+            <div class="card">
+                <h3 id="apiCardTitle">
+                    API Integration (Connections: <span title ="" id="connCount">0</span> | Requests: <span id="reqCount">0</span>)
+                </h3>
+                <div class="option" id="apiOption">
+                    <input type="text" id="apiUrlInput" readonly>
+                    <button id="copyApiBtn">Copy</button>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Microphone</h3>
+                <div class="option">
+                    <button id="start">Record</button>
+                    <button id="stop">Stop</button>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Upload File</h3>
+                <div class="option">
+                    <label for="audioFile" class="custom-file-upload">Browse...</label>
+                    <input type="file" id="audioFile" accept="audio/*">
+                    <button id="transcribe">Transcribe</button>
+                    <span id="fileNameDisplay">No file selected.</span>
+               </div>
+            </div>
+        </div>
+        <div id="transcriptionsPanel">
+            <h2>Transcriptions</h2>
+            <div id="transcriptionsContainer"></div>
+        </div>
+
+    
+    </div>
+</body>
+<footer>
+    <script>
+        window.ROOT_PATH = "";
+        
+        async function initBase() {
+            window.ROOT_PATH = window.location.pathname.replace(/\/$/, "");
+
+            document.getElementById("css").href =
+                window.ROOT_PATH + "/static/css/style.css";
+
+            const script = document.createElement("script");
+            script.src = window.ROOT_PATH + "/static/js/app.js";
+            document.body.appendChild(script);
+        }
+
+        initBase();
+    </script>
+</footer>
+</html>
