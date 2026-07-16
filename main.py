@@ -1,15 +1,44 @@
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.openapi.docs import get_swagger_ui_html
 import asyncio
 from datetime import datetime
 import json
 import stt_engine as engine
 import state
+import getpass
+import os
+from dotenv import load_dotenv
 
-app = FastAPI()
+load_dotenv()
+
+# Dynamically fetch the current jupyterhub username
+username = os.environ.get("JUPYTERHUB_USER")
+port = os.environ.get("PORT")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROXY_PATH = f"/user/{username}/proxy/{port}"
+
+app = FastAPI(docs_url=None)
+templates = Jinja2Templates("templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html():
+    return get_swagger_ui_html(
+        openapi_url=f"{PROXY_PATH}/openapi.json",
+        title="Database API Docs"
+    )
+    
+@app.get("/")
+async def root(request: Request):
+    return templates.TemplateResponse(
+        request=request, 
+        name="index.html",
+        context={"base_path": PROXY_PATH}
+    )
+    
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(broadcast_worker())
@@ -190,7 +219,3 @@ async def get_stats():
 @app.get("/history")
 async def get_history():
     return state.transcription_history
-    
-@app.get("/")
-async def root():
-    return FileResponse("templates/index.html")

@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>Faster-Whisper Speech-to-Text</title>
-    <link rel="stylesheet" id="css">
+    <link rel="stylesheet" href="{{ base_path }}/static/css/style.css">
+    <script src="{{ base_path }}/static/js/app.js"></script>
 </head>
 <body>
     <div id="app">
@@ -13,7 +15,7 @@
                     REST API (POST)<br>(Connections: <span title ="" id="connCount">0</span> | Requests: <span id="reqCount">0</span>)
                 </h3>
                 <div class="option" id="apiOption">
-                    <input type="text" id="apiInput" readonly>
+                    <input type="text" id="apiInput" readonly dir="rtl">
                     <button id="copyApiBtn">Copy</button>
                 </div>
             </div>
@@ -22,7 +24,7 @@
                     WebSocket API (WSS) <span id="wssState">⚫</span><br>(Connections: <span title ="" id="wconnCount">0</span> | Requests: <span id="wreqCount">0</span>)
                 </h3>
                 <div class="option" id="wssOption">
-                    <input type="text" id="wssInput" readonly>
+                    <input type="text" id="wssInput" readonly dir="rtl">
                     <button id="copyWssBtn">Copy</button>
                 </div>
             </div>
@@ -53,22 +55,4 @@
     
     </div>
 </body>
-<footer>
-    <script>
-        window.ROOT_PATH = "";
-        
-        async function initBase() {
-            window.ROOT_PATH = window.location.pathname.replace(/\/$/, "");
-
-            document.getElementById("css").href =
-                window.ROOT_PATH + "/static/css/style.css";
-
-            const script = document.createElement("script");
-            script.src = window.ROOT_PATH + "/static/js/app.js";
-            document.body.appendChild(script);
-        }
-
-        initBase();
-    </script>
-</footer>
 </html>

@@ -9,14 +9,16 @@ echo entering venv
 
 source venv/bin/activate
 
-if [ "$init" = true ]; then
-    echo checking requirements
+if ! command -v gunicorn &> /dev/null; then
+    echo "Dependencies missing. Installing from requirements.txt..."
     pip install -r requirements.txt
 fi
 
 echo starting service
 
+export $(grep -v '^#' .env | xargs)
+
 python -m gunicorn main:app \
   -k uvicorn.workers.UvicornWorker \
   --workers 1 \
-  --bind 0.0.0.0:8577
+  --bind 0.0.0.0:$PORT

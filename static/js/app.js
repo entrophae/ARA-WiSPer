@@ -1,85 +1,136 @@
 const BASE = window.location.pathname.replace(/\/$/, "");
 const HREF = window.location.href.replace(/\/$/, "");
-const WSS = HREF.replace("http","ws");
+const WSS = HREF.replace(/^http/, "ws");
 
 let mediaRecorder;
 let audioChunks = [];
+let fileInput, fileDisplay, fileSendBtn, start, stopBtn, apiUrlInput, copyApiBtn, connectionsNr, requestsNr, apiCardTitle, wssUrlInput, copyWssBtn, wconnectionsNr, wrequestsNr, wssState, wssCardTitle;
 
-const fileInput = document.getElementById("audioFile");
-const fileDisplay = document.getElementById("fileNameDisplay");
-const fileSendBtn = document.getElementById("transcribe");
-const startBtn = document.getElementById("start");
-const stopBtn = document.getElementById("stop");
-const apiUrlInput = document.getElementById("apiInput");
-const copyApiBtn = document.getElementById("copyApiBtn");
-const connectionsNr = document.getElementById("connCount");
-const requestsNr = document.getElementById("reqCount");
-const apiCardTitle = document.getElementById("apiCardTitle");
-const wssUrlInput = document.getElementById("wssInput");
-const copyWssBtn = document.getElementById("copyWssBtn");
-const wconnectionsNr = document.getElementById("wconnCount");
-const wrequestsNr = document.getElementById("wreqCount");
-const wssState = document.getElementById("wssState");
-const wssCardTitle = document.getElementById("wssCardTitle");
+document.addEventListener("DOMContentLoaded", () => {
+    fileInput = document.getElementById("audioFile");
+    fileDisplay = document.getElementById("fileNameDisplay");
+    fileSendBtn = document.getElementById("transcribe");
+    startBtn = document.getElementById("start");
+    stopBtn = document.getElementById("stop");
+    apiUrlInput = document.getElementById("apiInput");
+    copyApiBtn = document.getElementById("copyApiBtn");
+    connectionsNr = document.getElementById("connCount");
+    requestsNr = document.getElementById("reqCount");
+    apiCardTitle = document.getElementById("apiCardTitle");
+    wssUrlInput = document.getElementById("wssInput");
+    copyWssBtn = document.getElementById("copyWssBtn");
+    wconnectionsNr = document.getElementById("wconnCount");
+    wrequestsNr = document.getElementById("wreqCount");
+    wssState = document.getElementById("wssState");
+    wssCardTitle = document.getElementById("wssCardTitle");
 
-
-if (apiUrlInput && copyApiBtn) {
-    const fullApiUrl = `${HREF}/api`;
-
-    copyApiBtn.addEventListener("click", async () => {
-        try {
-            await navigator.clipboard.writeText(fullApiUrl);
-            const originalText = copyApiBtn.innerText;
-            copyApiBtn.innerText = "Copied!";
-            setTimeout(() => copyApiBtn.innerText = originalText, 2000);
-        } catch (err) {
-            console.error("Failed to copy!", err);
-        }
-    });
-}
-
-if (wssUrlInput && copyWssBtn) {
-    const fullWssUrl = `${WSS}/ws/stream`;
-
-    copyWssBtn.addEventListener("click", async () => {
-        try {
-            await navigator.clipboard.writeText(fullWssUrl);
-            const originalText = copyWssBtn.innerText;
-            copyWssBtn.innerText = "Copied!";
-            setTimeout(() => copyWssBtn.innerText = originalText, 2000);
-        } catch (err) {
-            console.error("Failed to copy!", err);
-        }
-    });
-}
-
-fileSendBtn.disabled = true;
-setRecordingState(false);
-updateStats();
-loadHistory();
-
-const ws = new WebSocket(`${WSS}/ws`);
-ws.onopen = () => {
-    console.log("🟢 WebSocket Connected!");
-    wssState.innerText = "🟢";
-}
-ws.onclose = () => {
-    console.log("🔴 WebSocket Disconnected.")
-    wssState.innerText = "🔴";
-}
-ws.onmessage = async (event) => {
-    const payload = JSON.parse(event.data);
-    console.log("📥 Received live event from server:", payload);
+    if (apiUrlInput && copyApiBtn) {
+        const fullApiUrl = `${HREF}/api`;
+        apiUrlInput.value = fullApiUrl;
+        
+        copyApiBtn.addEventListener("click", async () => {
+            try {
+                await navigator.clipboard.writeText(fullApiUrl);
+                const originalText = copyApiBtn.innerText;
+                copyApiBtn.innerText = "Copied!";
+                setTimeout(() => copyApiBtn.innerText = originalText, 2000);
+            } catch (err) {
+                console.error("Failed to copy!", err);
+            }
+        });
+    }
     
-    if (payload.type === "new_task") {
-        const safeId = payload.task_id || payload.id;
-        const safeLabel = payload.label || "Audio Task";
-        await createTaskUI(safeId, safeLabel);
+    if (wssUrlInput && copyWssBtn) {
+        const fullWssUrl = `${WSS}/ws/stream`;
+        wssUrlInput.value = fullWssUrl;
+    
+        copyWssBtn.addEventListener("click", async () => {
+            try {
+                await navigator.clipboard.writeText(fullWssUrl);
+                const originalText = copyWssBtn.innerText;
+                copyWssBtn.innerText = "Copied!";
+                setTimeout(() => copyWssBtn.innerText = originalText, 2000);
+            } catch (err) {
+                console.error("Failed to copy!", err);
+            }
+        });
     }
-    else if (payload.type === "stats_update") {
-        await updateStats(payload);
+
+    fileSendBtn.disabled = true;
+    setRecordingState(false);
+    updateStats();
+    loadHistory
+
+    fileInput.addEventListener("change", () => {
+        fileSendBtn.disabled = !fileInput.files.length;
+        if (fileInput.files.length > 0) {
+            const file = fileInput.files[0];
+            const name = file.name;
+            const size = formatBytes(file.size); 
+            
+            let typeStr = "Unknown Type";
+            if (file.type) {
+                typeStr = `${file.type.split("/")[0]}: ${file.type.split("/")[1]}`;
+            }
+            
+            fileDisplay.innerText = `${name}\n${size} (${typeStr})`;
+        } else {
+            fileDisplay.innerText = "No file selected";
+        }
+    });
+    
+    fileSendBtn.addEventListener("click", uploadAudio);
+    
+    startBtn.onclick = async () => {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+    
+        mediaRecorder.ondataavailable = e => {
+            audioChunks.push(e.data);
+        };
+    
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+            setRecordingState(false);
+            uploadFile(audioBlob, `Recording (${new Date().toLocaleTimeString()})`);
+        };
+    
+        mediaRecorder.start();
+        setRecordingState(true);
+    };
+    
+    stopBtn.onclick = () => {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+            mediaRecorder.stop();
+        }
+        setRecordingState(false);
+    };
+
+    const ws = new WebSocket(`${WSS}/ws`);
+    ws.onopen = () => {
+        console.log("🟢 WebSocket Connected!");
+        wssState.innerText = "🟢";
     }
-};
+    ws.onclose = () => {
+        console.log("🔴 WebSocket Disconnected.")
+        wssState.innerText = "🔴";
+    }
+    ws.onmessage = async (event) => {
+        const payload = JSON.parse(event.data);
+        console.log("📥 Received live event from server:", payload);
+        
+        if (payload.type === "new_task") {
+            const safeId = payload.task_id || payload.id;
+            const safeLabel = payload.label || "Audio Task";
+            await createTaskUI(safeId, safeLabel);
+        }
+        else if (payload.type === "stats_update") {
+            await updateStats(payload);
+        }
+    };
+});
 
 async function updateStats(data = null) {
     try {
@@ -122,6 +173,7 @@ function setRecordingState(isRecording) {
         stopBtn.classList.add("inactive");
     }
 }
+
 async function uploadFile(file, label = "Audio") {
     const formData = new FormData();
     formData.append("audio_file", file, label);
@@ -212,52 +264,6 @@ async function uploadAudio() {
     fileDisplay.innerText = "No file selected";
 }
 
-fileInput.addEventListener("change", () => {
-    fileSendBtn.disabled = !fileInput.files.length;
-    if (fileInput.files.length > 0) {
-        const file = fileInput.files[0];
-        const name = file.name;
-        const size = formatBytes(file.size); 
-        
-        let typeStr = "Unknown Type";
-        if (file.type) {
-            typeStr = `${file.type.split("/")[0]}: ${file.type.split("/")[1]}`;
-        }
-        
-        fileDisplay.innerText = `${name}\n${size} (${typeStr})`;
-    } else {
-        fileDisplay.innerText = "No file selected";
-    }
-});
-
-fileSendBtn.addEventListener("click", uploadAudio);
-
-startBtn.onclick = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
-
-    mediaRecorder.ondataavailable = e => {
-        audioChunks.push(e.data);
-    };
-
-    mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-        setRecordingState(false);
-        uploadFile(audioBlob, `Recording (${new Date().toLocaleTimeString()})`);
-    };
-
-    mediaRecorder.start();
-    setRecordingState(true);
-};
-
-stopBtn.onclick = () => {
-    if (mediaRecorder && mediaRecorder.state !== "inactive") {
-        mediaRecorder.stop();
-    }
-    setRecordingState(false);
-};
 async function loadHistory() {
     try {
         const res = await fetch(`${BASE}/history`);
