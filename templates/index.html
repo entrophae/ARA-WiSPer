@@ -10,13 +10,24 @@
         <div id="optionsPanel">
             <div class="card">
                 <h3 id="apiCardTitle">
-                    API Integration (Connections: <span title ="" id="connCount">0</span> | Requests: <span id="reqCount">0</span>)
+                    REST API (POST)<br>(Connections: <span title ="" id="connCount">0</span> | Requests: <span id="reqCount">0</span>)
                 </h3>
                 <div class="option" id="apiOption">
-                    <input type="text" id="apiUrlInput" readonly>
+                    <input type="text" id="apiInput" readonly>
                     <button id="copyApiBtn">Copy</button>
                 </div>
             </div>
+     	    <div class="card">
+                <h3 id="wssCardTitle">
+                    WebSocket API (WSS) <span id="wssState">⚫</span><br>(Connections: <span title ="" id="wconnCount">0</span> | Requests: <span id="wreqCount">0</span>)
+                </h3>
+                <div class="option" id="wssOption">
+                    <input type="text" id="wssInput" readonly>
+                    <button id="copyWssBtn">Copy</button>
+                </div>
+            </div>
+        </div>
+        <div id="optionsPanel">
             <div class="card">
                 <h3>Microphone</h3>
                 <div class="option">

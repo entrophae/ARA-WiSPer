@@ -1,5 +1,6 @@
 const BASE = window.location.pathname.replace(/\/$/, "");
 const HREF = window.location.href.replace(/\/$/, "");
+const WSS = HREF.replace("http","ws");
 
 let mediaRecorder;
 let audioChunks = [];
@@ -9,17 +10,21 @@ const fileDisplay = document.getElementById("fileNameDisplay");
 const fileSendBtn = document.getElementById("transcribe");
 const startBtn = document.getElementById("start");
 const stopBtn = document.getElementById("stop");
-const apiUrlInput = document.getElementById("apiUrlInput");
+const apiUrlInput = document.getElementById("apiInput");
 const copyApiBtn = document.getElementById("copyApiBtn");
 const connectionsNr = document.getElementById("connCount");
 const requestsNr = document.getElementById("reqCount");
 const apiCardTitle = document.getElementById("apiCardTitle");
+const wssUrlInput = document.getElementById("wssInput");
+const copyWssBtn = document.getElementById("copyWssBtn");
+const wconnectionsNr = document.getElementById("wconnCount");
+const wrequestsNr = document.getElementById("wreqCount");
+const wssState = document.getElementById("wssState");
+const wssCardTitle = document.getElementById("wssCardTitle");
 
 
 if (apiUrlInput && copyApiBtn) {
     const fullApiUrl = `${HREF}/api`;
-    apiUrlInput.value = fullApiUrl;
-    apiUrlInput.style.width = (fullApiUrl.length) + "ch";
 
     copyApiBtn.addEventListener("click", async () => {
         try {
@@ -33,53 +38,76 @@ if (apiUrlInput && copyApiBtn) {
     });
 }
 
+if (wssUrlInput && copyWssBtn) {
+    const fullWssUrl = `${WSS}/ws/stream`;
+
+    copyWssBtn.addEventListener("click", async () => {
+        try {
+            await navigator.clipboard.writeText(fullWssUrl);
+            const originalText = copyWssBtn.innerText;
+            copyWssBtn.innerText = "Copied!";
+            setTimeout(() => copyWssBtn.innerText = originalText, 2000);
+        } catch (err) {
+            console.error("Failed to copy!", err);
+        }
+    });
+}
+
 fileSendBtn.disabled = true;
 setRecordingState(false);
 updateStats();
 loadHistory();
 
-const evtSource = new EventSource(`${BASE}/stream`);
-evtSource.onmessage = (event) => {
+const ws = new WebSocket(`${WSS}/ws`);
+ws.onopen = () => {
+    console.log("🟢 WebSocket Connected!");
+    wssState.innerText = "🟢";
+}
+ws.onclose = () => {
+    console.log("🔴 WebSocket Disconnected.")
+    wssState.innerText = "🔴";
+}
+ws.onmessage = async (event) => {
     const payload = JSON.parse(event.data);
     console.log("📥 Received live event from server:", payload);
+    
     if (payload.type === "new_task") {
-        createTaskUI(payload.task_id, payload.label);
+        const safeId = payload.task_id || payload.id;
+        const safeLabel = payload.label || "Audio Task";
+        await createTaskUI(safeId, safeLabel);
     }
     else if (payload.type === "stats_update") {
-        const connSize = Object.keys(payload.connections).length;
-        connectionsNr.innerText = connSize;
-        requestsNr.innerText = payload.total_calls;
-        
-        let tooltipText = "Active Connections:\n";
-        for (const [ip, count] of Object.entries(payload.connections)) {
-            tooltipText += `• ${ip} requested ${count}\n`;
-        }
-        
-        if (connSize === 0) {
-            tooltipText = "No external connections yet.";
-        }
-        apiCardTitle.title = tooltipText;
+        await updateStats(payload);
     }
 };
 
-async function updateStats() {
+async function updateStats(data = null) {
     try {
-        const res = await fetch(`${BASE}/stats`);
-        if (!res.ok) return;
-        const data = await res.json();
-        
-        connectionsNr.innerText = Object.keys(data.connections).length;
-        requestsNr.innerText = data.total_calls;
-        
-        let tooltipText = "Active Connections:\n";
-        for (const [ip, count] of Object.entries(data.connections)) {
-            tooltipText += `• ${ip} requested ${count}\n`;
+        if (data === null) {
+            const res = await fetch(`${BASE}/stats`);
+            if (!res.ok) return;
+            data = await res.json();
         }
-        if (Object.keys(data.connections).length === 0) { 
-            tooltipText = "No external connections yet.";
-        }
-        apiCardTitle.title = tooltipText
         
+        const connSize = Object.keys(data.connections || {}).length;
+        connectionsNr.innerText = connSize;
+        requestsNr.innerText = data.total_calls || 0;
+        
+        let apiTooltip = "Active API Connections:\n";
+        for (const [ip, count] of Object.entries(data.connections || {})) {
+            apiTooltip += `• ${ip} requested ${count}\n`;
+        }
+        apiCardTitle.title = connSize === 0 ? "No external API connections yet." : apiTooltip;
+
+        const wconnSize = Object.keys(data.wconnections || {}).length;
+        wconnectionsNr.innerText = wconnSize;
+        wrequestsNr.innerText = data.total_wss_calls || 0;
+        
+        let wssTooltip = "Active WSS Connections:\n";
+        for (const [ip, count] of Object.entries(data.wconnections || {})) {
+            wssTooltip += `• ${ip} requested ${count}\n`;
+        }
+        wssCardTitle.title = wconnSize === 0 ? "No external WSS connections yet." : wssTooltip;
     } catch (err) {
         console.error("Could not fetch stats", err);
     }
@@ -105,6 +133,12 @@ async function uploadFile(file, label = "Audio") {
         });
 
         if (!response.ok) throw new Error(`Server responded with ${response.status}`);
+
+        const data = await response.json();
+        const taskId = data.task_id || data.id;
+        if (taskId) {
+            createTaskUI(taskId, label);
+        }
         
     } catch (err) {
         statusEl.innerText = "Upload failed!";
@@ -113,10 +147,16 @@ async function uploadFile(file, label = "Audio") {
 }
 
 async function createTaskUI(taskId, label){
+    if (!taskId) return;
+    if (document.getElementById(`task-${taskId}`)) {
+        return; 
+    }
+    
     const container = document.getElementById("transcriptionsContainer");
     
     const taskDiv = document.createElement("div");
     taskDiv.className = "transcription-task";
+    taskDiv.id = `task-${taskId}`;
     taskDiv.innerHTML = `
         <h3 class="title-el">${truncateMiddle(label, 30)}</h3>
         <div class="status-el">Processing...</div>
@@ -244,6 +284,7 @@ async function loadHistory() {
 }
 
 function truncateMiddle(str, maxLength = 30) {
+    if (!str) return "Unknown Task";
     if (str.length <= maxLength) return str;
     const charsToShow = maxLength - 3; 
     const frontChars = Math.ceil(charsToShow / 2);
