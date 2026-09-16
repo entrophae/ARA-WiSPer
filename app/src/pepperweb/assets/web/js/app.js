@@ -6,6 +6,8 @@ const app = createApp({
             constants: {},
             host: document.domain,
             isConnected: false,
+            isMicActive: false,
+            micTimeout: null,
             showSettings: false,
             commandInput: '',
             apiMode: '',
@@ -22,7 +24,10 @@ const app = createApp({
                 AZURE_SPEECH_REGION: '', GROQ_API_KEY: '', TAVILY_API_KEY: '',
                 OPENWEATHER_API_KEY: '', YOUTUBE_API_KEY: '',
                 CUSTOM_LLM_ENDPOINT: '', CUSTOM_LLM_KEY: '',
-                CUSTOM_LLM_MODEL: '', SYSTEM_ROUTING_MODE: ''
+                CUSTOM_LLM_MODEL: '', 
+                CUSTOM_STT_ENDPOINT: '', CUSTOM_STT_KEY: '',
+                CUSTOM_VAD_MODEL: '',
+                SYSTEM_AUDIO_MODE: '', SYSTEM_ROUTING_MODE: ''
             },
         };
     },
@@ -97,6 +102,12 @@ const app = createApp({
                         if (!this.apiData.SYSTEM_ROUTING_MODE) {
                             this.apiData.SYSTEM_ROUTING_MODE = this.constants.MODE_CUSTOM;
                         }
+                        if (!this.apiData.SYSTEM_AUDIO_MODE) {
+                            this.apiData.SYSTEM_AUDIO_MODE = this.constants.AUDIO_CUSTOM;
+                        }
+                        if (!this.apiData.CUSTOM_VAD_MODEL) {
+                            this.apiData.CUSTOM_VAD_MODEL = this.constants.VAD_WEBRTC;
+                        }
                         logMessage = 'Loaded configuration from server.';
                         logType = 'log-system';
 
@@ -122,6 +133,17 @@ const app = createApp({
                                 });
                             }
                         });
+                        return;
+                    }
+                    else if (payload.type === this.constants.MSG_MIC_ACTIVITY) {
+                        this.isMicActive = true;
+
+                        clearTimeout(this.micTimeout);
+
+                        this.micTimeout = setTimeout(() => {
+                            this.isMicActive = false;
+                        }, 300);
+
                         return;
                     }
                     else if (payload.type === this.constants.MSG_PROXY_WS_LOG) {

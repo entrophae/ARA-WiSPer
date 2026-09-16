@@ -189,6 +189,10 @@ dependencies {
     // SSH client for Android (locked to 0.37.0 due to minSdk 23 compatibility)
     implementation 'com.hierynomus:sshj:0.37.0'
 
+    // Android VAD
+    implementation 'com.github.gkonovalov.android-vad:silero:2.0.9'
+    implementation 'com.github.gkonovalov.android-vad:webrtc:2.0.9'
+    implementation 'com.github.gkonovalov.android-vad:yamnet:2.0.9'
 
     // Test dependencies
     testImplementation 'junit:junit:4.13.2'

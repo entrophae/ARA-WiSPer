@@ -10,9 +10,21 @@ object ProxySettingsRepository {
         return appPrefs.getString(key, default) ?: default
     }
 
+    val currentAudioMode: String
+        get() = getPref(Settings.SYSTEM_AUDIO_MODE, Modes.AUDIO.CUSTOM)
+
     val currentRoutingMode: String
         get() = getPref(Settings.SYSTEM_ROUTING_MODE, Modes.ROUTING.CUSTOM)
 
+    val currentVadMode: String
+        get() = getPref(Settings.CUSTOM_VAD_MODEL, Proxy.VAD.WEBRTC)
+        
+    val isCustomProxyAudio: Boolean
+        get() = currentAudioMode == Modes.AUDIO.CUSTOM
+        
+    val isGoogleAudio: Boolean
+        get() = currentAudioMode == Modes.AUDIO.GOOGLE
+        
     val isCustomProxyRouting: Boolean
         get() = currentRoutingMode == Modes.ROUTING.CUSTOM
 
@@ -25,6 +37,12 @@ object ProxySettingsRepository {
     val customLlmModel: String
         get() = getPref(Settings.LLM_MODEL, "")
 
+    val customSttEndpoint: String
+        get() = getPref(Settings.STT_ENDPOINT, "")
+
+    val customSttKey: String
+        get() = getPref(Settings.STT_KEY, "")
+    
     val customSystemPrompt: String
         get() = getPref(Settings.SYSTEM_PROMPT, "")
 
@@ -52,6 +70,12 @@ object ProxySettingsRepository {
     }
 
     object Modes {
+        object AUDIO {
+            const val OPENAI = "OpenAI (24kHz)"
+            const val GOOGLE = "Google (16kHz)"
+            const val CUSTOM = "Custom Proxy"
+            val OPTIONS = listOf(OPENAI, GOOGLE, CUSTOM)
+        }
         object ROUTING {
             const val REALTIME = "REALTIME_STS"
             const val AZURE = "AZURE_STTTS"
@@ -62,10 +86,14 @@ object ProxySettingsRepository {
 
     object Settings {
         const val SYSTEM_PROMPT = "SYSTEM_PROMPT"
+        const val SYSTEM_AUDIO_MODE = "SYSTEM_AUDIO_MODE"
         const val SYSTEM_ROUTING_MODE = "SYSTEM_ROUTING_MODE"
         const val LLM_ENDPOINT = "CUSTOM_LLM_ENDPOINT"
         const val LLM_KEY = "CUSTOM_LLM_KEY"
         const val LLM_MODEL = "CUSTOM_LLM_MODEL"
+        const val CUSTOM_VAD_MODEL = "CUSTOM_VAD_MODEL"
+        const val STT_ENDPOINT = "CUSTOM_STT_ENDPOINT"
+        const val STT_KEY = "CUSTOM_STT_KEY"
 
         const val OPENAI_KEY = "OPENAI_API_KEY"
         const val AZURE_ENDPOINT = "AZURE_OPENAI_ENDPOINT"
@@ -87,6 +115,7 @@ object ProxySettingsRepository {
             const val STATUS_UPDATE = "STATUS_UPDATE"
             const val CHAT_UPDATE = "CHAT_UPDATE"
             const val CHAT_COMMAND = "CHAT_COMMAND"
+            const val MIC_ACTIVITY = "MIC_ACTIVITY"
         }
     }
 
@@ -112,6 +141,13 @@ object ProxySettingsRepository {
     }
 
     object Proxy {
+        object VAD {
+            const val WEBRTC = "WebRTC VAD"
+            const val SILERO = "Silero VAD"
+            const val YAMNET = "Yamnet VAD"
+            // val OPTIONS = listOf(WEBRTC, SILERO, YAMNET)
+            val OPTIONS = listOf(WEBRTC, YAMNET)
+        }
 
         object Keys {
             const val TYPE = "type"

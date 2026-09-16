@@ -19,7 +19,6 @@ import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appString
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings
 import de.rub.hcd.entrophae.ara_wisper.server.manager.DashboardManager
-import de.rub.hcd.entrophae.ara_wisper.server.network.DataBaseClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.WebSocketPayloads
 import de.rub.hcd.entrophae.ara_wisper.server.network.authBearer
 import io.ktor.http.ContentType

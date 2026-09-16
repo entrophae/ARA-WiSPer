@@ -43,6 +43,8 @@ fun Route.proxyRouting(
                 when (type) {
                     ProxySettingsRepository.Proxy.Events.SESSION_UPDATE -> manager.handleSessionUpdate(json, rawJson)
                     ProxySettingsRepository.Proxy.Events.RESP_CANCEL -> manager.updateIsResponseCancelled(true)
+                    ProxySettingsRepository.Proxy.Events.CONV_ITEM_TRUNC -> manager.handleItemTruncated(json)
+                    ProxySettingsRepository.Proxy.Events.INPUT_BUFFER_APPEND -> manager.handleAudioAppend(json)
                     ProxySettingsRepository.Proxy.Events.CONV_ITEM_CREATE -> manager.handleItemCreate(json, rawJson)
                     ProxySettingsRepository.Proxy.Events.RESP_CREATE -> manager.handleRespCreate(rawJson)
                 }

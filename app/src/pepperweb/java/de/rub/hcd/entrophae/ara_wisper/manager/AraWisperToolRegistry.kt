@@ -3,7 +3,6 @@ package de.rub.hcd.entrophae.ara_wisper.manager
 import android.util.Log
 import ch.fhnw.pepper_realtime.tools.Tool
 import ch.fhnw.pepper_realtime.tools.ToolContext
-import de.rub.hcd.entrophae.ara_wisper.tools.KnowledgeDatabaseTool
 import org.json.JSONObject
 
 class AraWisperToolRegistry {
@@ -20,8 +19,7 @@ class AraWisperToolRegistry {
     }
 
     private fun registerAllCustomTools() {
-        // Add all your flavor-specific tools here!
-        registerTool("search_knowledge_db") { KnowledgeDatabaseTool() }
+        // registerTool("custom_tool") { CustomTool() }
 
         Log.d(ProxySettingsRepository.TAG, "AraWisperToolRegistry initialized with ${toolFactories.size} tools.")
     }
@@ -51,11 +49,11 @@ class AraWisperToolRegistry {
 
         return try {
             if (context == null) {
-                Log.w(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.TAG, "Executing $toolName without a ToolContext!")
+                Log.w(ProxySettingsRepository.TAG, "Executing $toolName without a ToolContext!")
             }
             tool.execute(args, context!!)
         } catch (e: Exception) {
-            Log.e(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.TAG, "Error executing local tool: $toolName", e)
+            Log.e(ProxySettingsRepository.TAG, "Error executing local tool: $toolName", e)
             JSONObject().put("error", e.message).toString()
         }
     }

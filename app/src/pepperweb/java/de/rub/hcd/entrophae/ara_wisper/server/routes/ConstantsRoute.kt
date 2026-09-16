@@ -24,15 +24,23 @@ fun Route.constantsRouting(viewModel: ChatViewModel) {
 
             "MSG_${ProxySettingsRepository.Dashboard.Events.CHAT_COMMAND}" to ProxySettingsRepository.Dashboard.Events.CHAT_COMMAND,
 
-            "MSG_${ProxySettingsRepository.Dashboard.Events.SET_USER}" to ProxySettingsRepository.Dashboard.Events.SET_USER,
-
-            "MSG_${ProxySettingsRepository.Dashboard.Events.DELETE_USER}" to ProxySettingsRepository.Dashboard.Events.DELETE_USER,
-
-            "MSG_${ProxySettingsRepository.Dashboard.Events.UPDATE_USER_KNOWLEDGE}" to ProxySettingsRepository.Dashboard.Events.UPDATE_USER_KNOWLEDGE,
-
-            "MSG_${ProxySettingsRepository.Dashboard.Events.CLEAR_HISTORY}" to ProxySettingsRepository.Dashboard.Events.CLEAR_HISTORY,
+            "MSG_${ProxySettingsRepository.Dashboard.Events.MIC_ACTIVITY}" to ProxySettingsRepository.Dashboard.Events.MIC_ACTIVITY,
 
             "MSG_${ProxySettingsRepository.Logging.TYPE_PROXY_LOG}" to ProxySettingsRepository.Logging.TYPE_PROXY_LOG,
+
+            // VAD Models
+            "VAD_${ProxySettingsRepository.Proxy.VAD.WEBRTC.split(' ')[0].uppercase()}" to ProxySettingsRepository.Proxy.VAD.WEBRTC,
+
+            "VAD_${ProxySettingsRepository.Proxy.VAD.SILERO.split(' ')[0].uppercase()}" to ProxySettingsRepository.Proxy.VAD.SILERO,
+
+            "VAD_${ProxySettingsRepository.Proxy.VAD.YAMNET.split(' ')[0].uppercase()}" to ProxySettingsRepository.Proxy.VAD.YAMNET,
+
+            // Audio Modes
+            "AUDIO_${ProxySettingsRepository.Modes.AUDIO.OPENAI.split(' ')[0].uppercase()}" to ProxySettingsRepository.Modes.AUDIO.OPENAI,
+
+            "AUDIO_${ProxySettingsRepository.Modes.AUDIO.GOOGLE.split(' ')[0].uppercase()}" to ProxySettingsRepository.Modes.AUDIO.GOOGLE,
+
+            "AUDIO_${ProxySettingsRepository.Modes.AUDIO.CUSTOM.split(' ')[0].uppercase()}" to ProxySettingsRepository.Modes.AUDIO.CUSTOM,
 
             // Routing Modes
             "MODE_${ProxySettingsRepository.Modes.ROUTING.REALTIME.split('_')[0].uppercase()}" to ProxySettingsRepository.Modes.ROUTING.REALTIME,

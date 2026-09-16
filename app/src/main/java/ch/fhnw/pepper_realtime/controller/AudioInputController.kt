@@ -12,6 +12,7 @@ import ch.fhnw.pepper_realtime.manager.SpeechRecognizerManager
 import ch.fhnw.pepper_realtime.network.RealtimeSessionManager
 import ch.fhnw.pepper_realtime.ui.ChatMessage
 import ch.fhnw.pepper_realtime.ui.ChatViewModel
+import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -88,9 +89,13 @@ class AudioInputController @Inject constructor(
             }
 
             val isGoogle = settingsRepository.apiProviderEnum.isGoogleProvider()
+            val isProxy = _root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.isCustomProxyRouting
+
+            val requiresRecreation = realtimeAudioInput != null &&
+                    (realtimeAudioInput!!.isGoogleProvider != isGoogle || realtimeAudioInput!!.isProxy != isProxy)
             
             // Recreate manager if provider changed (different sample rates)
-            if (realtimeAudioInput != null && realtimeAudioInput!!.isGoogleProvider != isGoogle) {
+            if (requiresRecreation) {
                 realtimeAudioInput?.stop()
                 realtimeAudioInput = null
                 Log.i(TAG, "Recreating RealtimeAudioInputManager for provider change")
@@ -99,13 +104,14 @@ class AudioInputController @Inject constructor(
             if (realtimeAudioInput == null) {
                 realtimeAudioInput = RealtimeAudioInputManager(sessionManager).apply {
                     this.isGoogleProvider = isGoogle
+                    this.isProxy = isProxy
                 }
-                Log.i(TAG, "Created RealtimeAudioInputManager (${if (isGoogle) "Google 16kHz" else "OpenAI 24kHz"})")
+                Log.i(TAG, "Created RealtimeAudioInputManager (${if (isProxy) "Proxy 16kHz" else if (isGoogle) "Google 16kHz" else "OpenAI 24kHz"})")
             }
             applicationScope.launch(ioDispatcher) {
                 val started = realtimeAudioInput!!.start()
                 if (started) {
-                    Log.i(TAG, "Realtime API audio capture started (${if (isGoogle) "Google 16kHz" else "OpenAI 24kHz"})")
+                    Log.i(TAG, "Realtime API audio capture started (${if (isProxy) "Proxy 16kHz" else if (isGoogle) "Google 16kHz" else "OpenAI 24kHz"})")
                 } else {
                     Log.e(TAG, "Failed to start Realtime API audio capture")
                     viewModel.setStatusText(getString(R.string.error_audio_capture_failed))

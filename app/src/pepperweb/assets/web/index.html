@@ -21,6 +21,9 @@
                 <div class="status-badge" :class="{ connected: isConnected }">
                     {{ isConnected ? 'Connected' : 'Disconnected' }}
                 </div>
+                <div class="status-badge" :class="{ listening: isMicActive }">
+                    {{ isMicActive ? 'Listening' : 'Mic Idle' }}
+                </div>
             </div>
 
             <hr>

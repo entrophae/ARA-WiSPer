@@ -13,7 +13,9 @@ import de.rub.hcd.entrophae.ara_wisper.server.data.ChatTurn
 import de.rub.hcd.entrophae.ara_wisper.server.data.createTurn
 import de.rub.hcd.entrophae.ara_wisper.server.data.logTurnState
 import de.rub.hcd.entrophae.ara_wisper.server.network.LlmClient
+import de.rub.hcd.entrophae.ara_wisper.server.network.SttClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.WebSocketPayloads
+import de.rub.hcd.entrophae.ara_wisper.server.service.AudioProcessor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Deferred
@@ -25,6 +27,7 @@ class ProxyPipelineManager(
     private val sendToApp: suspend (String) -> Unit
 ) {
     val toolInterceptor = ToolInterceptor()
+    val audioProcessor = AudioProcessor()
 
     var apiSupportsToolsTask: Deferred<Boolean>? = null
 
@@ -39,6 +42,7 @@ class ProxyPipelineManager(
 
     val currentUserId = "default"
     var currentTurn: ChatTurn? = null
+    private val currentTurnAudioBuffer = java.io.ByteArrayOutputStream()
     var isWaitingForAppToolResult = false
 
     fun updateIsResponseCancelled(cancelled: Boolean) {
@@ -46,6 +50,63 @@ class ProxyPipelineManager(
         this.isResponseCancelled = cancelled
         if (cancelled) {
             AraWisperManager.speechManager.stop()
+        }
+    }
+
+    fun fixTranscribedTruncatedText(original: String, truncated: String): String {
+        if (original.isBlank() || truncated.isBlank()) return original
+
+        // Extract just the spoken words, ignoring all punctuation and markdown
+        val wordRegex = Regex("[\\p{L}\\p{N}]+")
+        val truncatedWordCount = wordRegex.findAll(truncated).count()
+        val originalWords = wordRegex.findAll(original).toList()
+
+        if (truncatedWordCount == 0 || originalWords.isEmpty()) return original
+
+        // Take exactly the number of words STT heard, capped at the original length
+        val wordsToKeep = minOf(truncatedWordCount, originalWords.size)
+
+        // Find the index in the original string right after that final word
+        val cutoffIndex = originalWords[wordsToKeep - 1].range.last + 1
+        return original.substring(0, cutoffIndex)
+    }
+
+    fun handleItemTruncated(json: JSONObject) {
+        val audioEndMs = json.optInt("audio_end_ms", 0)
+        if (audioEndMs > 0) {
+            serverScope.launch {
+                // 16kHz PCM16 mono = 32 bytes per millisecond
+                val byteCount = audioEndMs * 32
+                val allBytes = currentTurnAudioBuffer.toByteArray()
+
+                if (allBytes.isNotEmpty() && byteCount > 0) {
+                    val sliceLength = minOf(byteCount, allBytes.size)
+                    val slicedAudio = allBytes.copyOfRange(0, sliceLength)
+                    val base64Audio = android.util.Base64.encodeToString(slicedAudio, android.util.Base64.NO_WRAP)
+
+                    val rawTruncatedText = SttClient.sendAudioChunk(base64Audio)
+
+                    currentTurn?.let {
+                        if (rawTruncatedText.isNotBlank()) {
+                            val originalText = it.llmResponse
+                            val fixedTruncatedText = fixTranscribedTruncatedText(originalText, rawTruncatedText)
+                            it.llmResponse = "$fixedTruncatedText-"
+                            Log.i(ProxySettingsRepository.TAG, "Truncation applied!\nOriginal: $originalText\nTruncated: ${it.llmResponse}")
+                            logTurnState("Truncated via STT transcription", it)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun processAudio(audioBytes: ByteArray) {
+        val finalBase64Speech = audioProcessor.processChunk(audioBytes)
+        if (finalBase64Speech != null) {
+            val sharedItemId = "item_${System.currentTimeMillis()}"
+            serverScope.launch {
+                executePipeline(audioData = finalBase64Speech, initialText = "", sharedItemId)
+            }
         }
     }
 
@@ -92,8 +153,20 @@ class ProxyPipelineManager(
                 LlmClient.checkApiToolSupport(selectedModel)
             }
         }
+        
+        audioProcessor.reconfigure()
     }
 
+    fun handleAudioAppend(json: JSONObject){
+        val audioData = json.optString(ProxySettingsRepository.Proxy.Keys.AUDIO)
+        if (audioData.isBlank()) return
+        try {
+            val rawBytes = decode(audioData, android.util.Base64.NO_WRAP)
+            processAudio(rawBytes)
+        } catch (e: IllegalArgumentException) {
+            Log.e(ProxySettingsRepository.TAG, "Failed to decode audio base64", e)
+        }
+    }
 
     fun handleItemCreate(json: JSONObject, rawJson: String){
         DashboardManager.sendLog(rawJson, isFromRobot = true)
@@ -146,7 +219,8 @@ class ProxyPipelineManager(
             this.currentTurn = createTurn(currentUserId, itemId, textToProcess, this.currentTurn)
 
             latestUserText = ""
-
+            audioProcessor.reset()
+            
             serverScope.launch {
                 executePipeline(audioData = "", initialText = textToProcess, itemId = itemId)
             }
@@ -180,7 +254,22 @@ class ProxyPipelineManager(
         var textToProcess = initialText
         if (audioData.isNotEmpty() && textToProcess.isBlank()) {
 
-            // TODO: use STT
+            //TODO: check if first creting textToProcess and then creating Turn is not better. might break turn item or could be delayed?
+            this.currentTurn = createTurn(currentUserId, itemId, initialText, this.currentTurn)
+
+            sendToApp(WebSocketPayloads.userItemPlaceholder(itemId))
+
+            textToProcess = SttClient.sendAudioChunk(audioData)
+            if (textToProcess.isBlank()) return
+
+            this.currentTurn?.userQuery = textToProcess
+
+            DashboardManager.sendChat(isUser = true, text = textToProcess)
+
+            logTurnState("User Text Appended", this.currentTurn)
+
+            sendToApp(WebSocketPayloads.sttTranscriptCompleted(textToProcess))
+            lastKnownUserQuery = textToProcess
         }
 
         // 2. Thinking Notification

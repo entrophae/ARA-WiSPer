@@ -104,4 +104,49 @@ object WebSocketPayloads {
             put(ProxySettingsRepository.Logging.Keys.DATA, data)
         }
     }
+
+    fun itemCreateUser(turnId: String, userQuery: String): String {
+        return JSONObject().apply {
+            put("type", "conversation.item.create")
+            put("item", JSONObject().apply {
+                put("id", turnId)
+                put("type", "message")
+                put("role", "user")
+                put("content", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("type", "input_text")
+                        put("text", userQuery)
+                    })
+                })
+            })
+        }.toString()
+    }
+    fun itemCreateLLM(itemId: Any, llmResponse: Any): String {
+        return JSONObject().apply {
+            put("type", "conversation.item.create")
+            put("item", JSONObject().apply {
+                put("id", itemId)
+                put("type", "message")
+                put("role", "assistant")
+                put("content", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("type", "input_text")
+                        put("text", llmResponse)
+                    })
+                })
+            })
+        }.toString()
+    }
+
+    fun userItemPlaceholder(itemId: String): String {
+        return JSONObject().apply {
+            put("type", "conversation.item.create")
+            put("item", JSONObject().apply {
+                put("id", itemId)
+                put("type", "message")
+                put("role", "user")
+                put("content", JSONArray()) // Empty content = placeholder
+            })
+        }.toString()
+    }
 }
