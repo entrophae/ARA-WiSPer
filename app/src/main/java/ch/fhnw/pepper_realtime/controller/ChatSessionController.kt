@@ -17,6 +17,7 @@ import ch.fhnw.pepper_realtime.tools.interfaces.RealtimeMessageSender
 import ch.fhnw.pepper_realtime.ui.ChatMessage
 import ch.fhnw.pepper_realtime.ui.ChatViewModel
 import dagger.hilt.android.scopes.ActivityScoped
+import de.rub.hcd.entrophae.ara_wisper.interceptor.WebSocketInterceptor
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -298,6 +299,12 @@ class ChatSessionController @Inject constructor(
         this.connectionCallback = callback
 
         try {
+            
+            // ARA-WiSPer Custom Proxy Route
+            if (_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.interceptor.WebSocketInterceptor.interceptConnection(TAG, sessionManager, callback)) {
+                return
+            }
+
             val provider = settingsRepository.apiProviderEnum
             val selectedModel = settingsRepository.model
             val azureEndpoint = keyManager.azureOpenAiEndpoint

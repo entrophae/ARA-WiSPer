@@ -1,0 +1,88 @@
+package de.rub.hcd.entrophae.ara_wisper.core
+
+import ch.fhnw.pepper_realtime.R
+import org.json.JSONArray
+import org.json.JSONObject
+import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appString
+import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
+import androidx.annotation.Keep
+
+object ApiDataTemplate {
+
+    @Keep
+    data class SettingKey(
+        val id: String,
+        val labelRes: Int = 0,
+        val type: String = "",
+        val placeholderRes: Int = 0,
+        val default: String = "",
+        val options: List<String>? = null
+    )
+
+    @Keep
+    open class SettingGroup {
+        fun allKeys(): List<SettingKey> {
+            return this.javaClass.declaredFields.mapNotNull { field ->
+                field.isAccessible = true
+                field.get(this) as? SettingKey
+            }
+        }
+
+        fun toUiSchema(): JSONArray {
+            val array = JSONArray()
+            allKeys().forEach { setting ->
+                array.put(JSONObject().apply {
+                    put("id", setting.id)
+                    if (setting.labelRes != 0) put("label", appString(setting.labelRes))
+                    put("type", setting.type)
+                    if (setting.placeholderRes != 0) put("placeholder", appString(setting.placeholderRes))
+                    if (setting.options != null) {
+                        put("options", JSONArray(setting.options))
+                    }
+                })
+            }
+            return array
+        }
+    }
+
+    object Providers : SettingGroup() {
+        val OPENAI_KEY = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.OPENAI_KEY, R.string.label_openai_key, "password", R.string.placeholder_openai_key)
+        val AZURE_ENDPOINT = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.AZURE_ENDPOINT, R.string.label_azure_endpoint, "url", R.string.placeholder_azure_endpoint)
+        val AZURE_KEY = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.AZURE_KEY, R.string.label_azure_key, "password")
+        val XAI_KEY = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.XAI_KEY, R.string.label_grok_key, "password", R.string.placeholder_grok_key)
+        val GOOGLE_KEY = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.GOOGLE_KEY, R.string.label_gemini_key, "password", R.string.placeholder_gemini_key)
+    }
+
+    object Azure : SettingGroup() {
+        val AZURE_SPEECH_KEY = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.AZURE_SPEECH_KEY, R.string.label_azure_speech_key, "password")
+        val AZURE_SPEECH_REGION = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.AZURE_SPEECH_REGION, R.string.label_azure_speech_region, "text", default = "switzerlandnorth")
+    }
+
+    object Proxy : SettingGroup() {
+        val LLM = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.LLM_ENDPOINT, R.string.label_llm_endpoint, "url", R.string.placeholder_custom_endpoint)
+        val LLM_KEY = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.LLM_KEY, R.string.label_llm_key, "password")
+        val LLM_MODEL = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.LLM_MODEL, R.string.label_llm_model, "model_select", R.string.placeholder_custom_model)
+    }
+
+    object Tools : SettingGroup() {
+        val VISION_ANALYSIS = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.GROQ_KEY, R.string.label_groq_key, "password")
+        val WEB_SEARCH_KEY = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.TAVILY_KEY, R.string.label_tavily_key, "password", R.string.placeholder_tavily_key)
+        val OPENWEATHER_KEY = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.OPENWEATHER_KEY, R.string.label_openweather_key, "password")
+        val YOUTUBE_KEY = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.YOUTUBE_KEY, R.string.label_youtube_key, "password")
+    }
+
+    object System : SettingGroup() {
+        val PROMPT_OVERRIDE = SettingKey(
+            _root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.SYSTEM_PROMPT,
+            R.string.label_system_prompt,
+            "modal_textarea",
+            default = _root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.defaultSystemPrompt
+        )
+        val ROUTING_MODE = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.SYSTEM_ROUTING_MODE, R.string.label_routing_mode, "radio", options = _root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Modes.ROUTING.OPTIONS, default = _root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Modes.ROUTING.CUSTOM)
+    }
+
+    val allSettings: List<SettingKey> by lazy {
+        Providers.allKeys() + Proxy.allKeys() + Tools.allKeys() + System.allKeys()
+    }
+
+}

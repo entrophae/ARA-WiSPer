@@ -6,6 +6,15 @@ plugins {
     id 'com.google.dagger.hilt.android'
 }
 
+// Read from local.properties
+def extLocalProps = new Properties()
+try {
+    localProps.load(new FileInputStream(rootProject.file("local.properties")))
+} catch (Exception e) {
+    logger.warn("local.properties not found")
+}
+def useStandalone = extLocalProps.getProperty("USE_STANDALONE", "true").toBoolean()
+
 android {
     namespace 'ch.fhnw.pepper_realtime'
     compileSdk 35
@@ -61,6 +70,12 @@ android {
             applicationIdSuffix ".pepper"
             versionNameSuffix "-pepper"
         }
+        pepperweb {
+            dimension "mode"
+            applicationId "de.rub.hcd.entrophae.ara_wisper"
+            applicationIdSuffix ".pepperweb"
+            versionNameSuffix "-web"
+        }
         standalone {
             dimension "mode"
             applicationIdSuffix ".standalone"
@@ -72,6 +87,15 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.debug
+        }
+    }
+    sourceSets {
+        pepperweb {
+            // Toggle this var to switch between standalone and pepper version
+            def targetEnv = useStandalone ? "standalone" : "pepper"
+            java.srcDirs += ["src/${targetEnv}/java"]
+            manifest.srcFile "src/pepperweb/manifests/${targetEnv}/AndroidManifest.xml"
         }
     }
     compileOptions {
@@ -84,6 +108,10 @@ android {
     packagingOptions {
         exclude 'META-INF/androidx.localbroadcastmanager_localbroadcastmanager.version'
         // Add additional exclude rules as needed if new errors occur
+        // Fix ktor/netty conflicts:
+        exclude 'META-INF/INDEX.LIST'
+        exclude 'META-INF/io.netty.versions.properties'
+        exclude 'META-INF/DEPENDENCIES'
     }
 
     buildFeatures {
@@ -111,11 +139,24 @@ dependencies {
     // libqi Java bindings for direct NAOqi session access (remote services/events) - ONLY FOR PEPPER
     pepperImplementation 'com.aldebaran:libqi-java-android:2.9.0'
 
+    if (!useStandalone) {
+        pepperwebImplementation 'com.aldebaran:qisdk:1.7.5'
+        pepperwebImplementation 'com.aldebaran:qisdk-design:1.7.5'
+        pepperwebImplementation 'com.aldebaran:libqi-java-android:2.9.0'
+    }
+
     // Azure Speech SDK (1.38.0 is the latest version compatible with minSdk 23)
     implementation 'com.microsoft.cognitiveservices.speech:client-sdk:1.38.0'
 
     // Networking
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    // Ktor Server
+    implementation "io.ktor:ktor-server-core:2.2.1"
+    implementation "io.ktor:ktor-server-netty:2.2.1"
+    implementation "io.ktor:ktor-server-websockets:2.2.1"
+    implementation "io.ktor:ktor-serialization-kotlinx-json:2.2.1"
+    implementation "io.ktor:ktor-server-content-negotiation:2.2.1"
 
     // Modern AndroidX libraries (compatible with SDK 35)
     implementation 'androidx.appcompat:appcompat:1.7.0'

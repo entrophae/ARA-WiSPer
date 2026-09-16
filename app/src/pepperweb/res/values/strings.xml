@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ARA-WiSPer</string>
+
+    <string name="proxy_connected">Robot connected to Local Proxy!</string>
+    <string name="proxy_server_error">Sorry, I could not reach the university server.</string>
+    <string name="proxy_pipeline_failed">Proxy Pipeline Failed</string>
+
+    <string name="label_openai_key">OpenAI Key</string>
+    <string name="placeholder_openai_key">sk-...</string>
+    <string name="label_azure_endpoint">Azure OpenAI Endpoint</string>
+    <string name="placeholder_azure_endpoint">resource.openai.azure.com</string>
+    <string name="label_azure_key">Azure OpenAI Key</string>
+    <string name="label_grok_key">Grok Key</string>
+    <string name="placeholder_grok_key">xai-...</string>
+    <string name="label_gemini_key">Gemini Key</string>
+    <string name="placeholder_gemini_key">AIza...</string>
+
+    <string name="label_azure_speech_key">Key</string>
+    <string name="label_azure_speech_region">Region</string>
+
+    <string name="placeholder_custom_endpoint">https://...</string>
+    <string name="placeholder_custom_model">Select a model...</string>
+    <string name="label_llm_endpoint">LLM Endpoint</string>
+    <string name="label_llm_key">LLM Key</string>
+    <string name="label_llm_model">LLM Model</string>
+
+    <string name="label_groq_key">Groq Key</string>
+    <string name="label_tavily_key">Tavily Key</string>
+    <string name="placeholder_tavily_key">tvly-...</string>
+    <string name="label_openweather_key">Openweather Key</string>
+    <string name="label_youtube_key">YouTube Key</string>
+
+    <string name="label_routing_mode">Routing Mode</string>
+    <string name="label_system_prompt">Agent Prompt</string>
+    <string name="placeholder_password">password</string>
+
+</resources>

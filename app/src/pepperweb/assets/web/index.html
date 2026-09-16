@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARA-WiSPer | Vue Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body>
+
+<div id="app">
+    <div class="sidebar">
+        <div class="panel">
+            <div>
+                <h1>ARA-WiSPer</h1>
+                <p class="subtitle">Ruhr-Universität Bochum | HCD</p>
+            </div>
+
+            <div class="status-header">
+                <div class="status-badge" :class="{ connected: isConnected }">
+                    {{ isConnected ? 'Connected' : 'Disconnected' }}
+                </div>
+            </div>
+
+            <hr>
+            <h2>Traffic Status</h2>
+            <div class="proxy-pipeline-status" v-if="proxyLogs.length > 0">
+                <div
+                        v-for="log in proxyLogs"
+                        :key="log.id"
+                        :class="['pipeline-badge', log.color]"
+                        :title="log.rawJson"
+                >
+                    {{ log.label }}
+                </div>
+            </div>
+        </div>
+        <hr><hr>
+        <button @click="showSettings = true" class="settings-toggle-btn">⚙️ API Configuration</button>
+    </div>
+    <div class="main-content">
+
+        <div class="top-bar">
+            <div class="panel">
+                <h2>Manual Message</h2>
+                <div class="control-group">
+                    <input type="text" v-model="commandInput" @keyup.enter="sendCommand" placeholder="Enter command or RAG query..." autocomplete="off">
+                    <button @click="sendCommand">Send to System</button>
+                </div>
+            </div>
+        </div>
+        <div class="panel panel-fill">
+            <h2>Live System Log</h2>
+            <div class="terminal" id="terminalLog" ref="terminalLog">
+                <div v-for="log in terminalLogs" :key="log.id"
+                     :class="['log-entry', log.type, log.sender ? log.sender.toLowerCase() : '']">
+
+                    <span :class="log.type" v-if="log.type !== 'chat-bubble'">{{ log.text }}</span>
+
+                    <div v-else class="bubble">
+                        {{ log.text }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <settings-modal
+        v-if="showSettings"
+        :initial-keys="apiData"
+        :schema="apiSchema"
+        @close="showSettings = false"
+        @save="saveConfig">
+    </settings-modal>
+
+    <div class="toast-container">
+        <transition-group name="toast-fade">
+            <div v-for="toast in toasts" :key="toast.id" :class="['toast', toast.type]">
+                {{ toast.text }}
+            </div>
+        </transition-group>
+    </div>
+</div>
+
+<script src="js/settingsComponent.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

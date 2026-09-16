@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:usesCleartextTraffic="true">
+        <provider
+            android:name="de.rub.hcd.entrophae.ara_wisper.manager.AraWisperInitiator"
+            android:authorities="${applicationId}.webinit"
+            android:enabled="true"
+            android:exported="false">
+        </provider>
+    </application>
+</manifest>
