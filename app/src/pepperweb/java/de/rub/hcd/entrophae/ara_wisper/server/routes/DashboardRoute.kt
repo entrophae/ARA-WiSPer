@@ -117,6 +117,125 @@ fun Route.dashboardRouting(viewModel: ChatViewModel) {
         }
     }
 
+    get(ProxySettingsRepository.Routes.PROXY_PROBE) {
+        val modelId = call.request.queryParameters["modelId"] ?: ""
+        val probeType = call.request.queryParameters["probeType"] ?: "vision"
+        val fieldId = call.request.queryParameters["fieldId"] ?: ""
+
+        val endpoint = when (fieldId) {
+            Settings.VLM_MODEL -> ProxySettingsRepository.customVlmEndpoint
+            Settings.EMBEDDING_MODEL -> ProxySettingsRepository.customEmbeddingEndpoint
+            else -> ProxySettingsRepository.customLlmEndpoint
+        }
+        val apiKey = when (fieldId) {
+            Settings.VLM_MODEL -> ProxySettingsRepository.customVlmKey
+            Settings.EMBEDDING_MODEL -> ProxySettingsRepository.customEmbeddingKey
+            else -> ProxySettingsRepository.customLlmKey
+        }
+
+        if (endpoint.isBlank() || apiKey.isBlank()) {
+            call.respondText("""{"supported": false, "response": "endpoint empty"}""", ContentType.Application.Json)
+            return@get
+        }
+
+        val targetUrl = if (probeType == "embed") "$endpoint/embeddings" else "$endpoint/chat/completions"
+
+        val requestBodyJson = JSONObject().apply {
+            put("model", modelId)
+            when (probeType) {
+                "vision" -> {
+                    put("messages", JSONArray().put(JSONObject().apply {
+                        put("role", "user")
+                        put("content", JSONArray().put(JSONObject().apply {
+                            put("type", "text")
+                            put("text", "Read the nine characters in the image. Reply with only those nine characters")
+                        }).put(JSONObject().apply {
+                            put("type", "image_url")
+                            put(
+                                "image_url",
+                                JSONObject().put(
+                                    "url",
+                                    createVisionProbeImage(probeText)
+                                )
+                            )
+                        }))
+                    }))
+                }
+                "embed" -> {
+                    put("input", "test")
+                }
+                "tools" -> {
+                    put("messages", JSONArray().put(JSONObject().apply {
+                        put("role", "user")
+                        put("content", "ping")
+                    }))
+                    put("tools", "tools-not-array")
+                }
+            }
+        }
+
+        val reqBody = requestBodyJson.toString().toRequestBody("application/json".toMediaType())
+        val request = Request.Builder().url(targetUrl).authBearer(apiKey).post(reqBody).build()
+
+        try {
+            val client = HttpClientManager.getInstance().getQuickApiClient()
+            client.newCall(request).execute().use { response ->
+                var errorString: String? = ""
+                val responseBodyStr = response.body?.string() ?: ""
+                if (response.code == 404 || response.code == 405) {
+                    val resultJson = JSONObject().apply {
+                        put("supported", false)
+                        put("response", responseBodyStr)
+                    }
+                    call.respondText(resultJson.toString(), ContentType.Application.Json)
+                    return@get
+                }
+                val isSupported = when (probeType) {
+                    "tools" ->
+                        response.code == 400 && (responseBodyStr.lowercase().contains("tools") || responseBodyStr.lowercase().contains("param"))
+                    "vision" ->
+                        if (!response.isSuccessful) {
+                            false
+                        } else {
+                            try {
+                                val answer = JSONObject(responseBodyStr)
+                                    .getJSONArray("choices")
+                                    .getJSONObject(0)
+                                    .getJSONObject("message")
+                                    .optString("content")
+                                    .trim()
+
+                                answer.length == probeText.length &&
+                                    answer.zip(probeText).count { (a, b) ->
+                                        a.uppercaseChar() != b.uppercaseChar()
+                                    } <= ceil((probeText.length / 2).toDouble())
+                            } catch (e: Exception) {
+                                errorString = e.message;
+                                false
+                            }
+                        }
+                    "embed" -> response.isSuccessful && !responseBodyStr.contains("\"error\"")
+                    else -> response.isSuccessful
+                }
+                val resultJson = JSONObject().apply {
+                    put("supported", isSupported)
+                    put("response", responseBodyStr)
+                    if (errorString?.isNotBlank() == true) {
+                        put("error", errorString)
+                    }
+                }
+                call.respondText(resultJson.toString(), ContentType.Application.Json)
+            }
+        } catch (e: Exception) {
+            val resultJson = JSONObject().apply {
+                put("supported", false)
+                put("error", e.message)
+            }
+            call.respondText(resultJson.toString(), ContentType.Application.Json)
+        }
+    }
+
+
 }
 
 private suspend fun DefaultWebSocketServerSession.sendInitialApiKeys() {
@@ -290,3 +409,37 @@ private suspend fun DefaultWebSocketServerSession.sendJsonToClient(payload: JSON
         Log.w("AraWisper", "Failed to send data to dashboard", e)
     }
 }
+
+private fun createVisionProbeImage(text: String): String {
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.BLACK
+        textSize = 50F
+        typeface = Typeface.DEFAULT_BOLD
+        textAlign = Paint.Align.LEFT
+    }
+    val bounds = android.graphics.Rect()
+    paint.getTextBounds(text, 0, text.length, bounds)
+
+    val paddingX = 60
+    val paddingY = 40
+    val width = bounds.width() + paddingX
+    val height = bounds.height() + paddingY
+
+    val bitmap = createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+
+    canvas.drawColor(Color.WHITE)
+
+    val x = (paddingX / 2f) - bounds.left
+    val y = (height / 2f) + (bounds.height() / 2f) - bounds.bottom
+
+    canvas.drawText(text, x, y, paint)
+
+    val outputStream = ByteArrayOutputStream()
+    bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+    bitmap.recycle()
+
+    val base64 = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
+    return "data:image/png;base64,$base64"
+}
+

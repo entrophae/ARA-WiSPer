@@ -24,6 +24,12 @@
     <string name="label_llm_endpoint">LLM Endpoint</string>
     <string name="label_llm_key">LLM Key</string>
     <string name="label_llm_model">LLM Model</string>
+    <string name="label_vlm_endpoint">VLM Endpoint</string>
+    <string name="label_vlm_key">VLM Key</string>
+    <string name="label_vlm_model">VLM Model</string>
+    <string name="label_embedding_endpoint">Embedding Endpoint</string>
+    <string name="label_embedding_key">Embedding Key</string>
+    <string name="label_embedding_model">Embedding Model</string>
     <string name="label_custom_vad">VAD Model</string>
     <string name="label_stt_endpoint">STT Endpoint</string>
     <string name="label_stt_key">STT Key</string>

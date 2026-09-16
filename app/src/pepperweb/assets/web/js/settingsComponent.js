@@ -51,22 +51,27 @@ const SettingRadioGroup = {
 
 const SettingModelDropdown = {
     props: ['fieldId', 'label', 'modelValue', 'placeholder'],
-    emits: ['update:modelValue'],
+    emits: ['update:modelValue', 'capabilities'],
     data() {
         return {
             availableModels: [],
-            isLoading: false
+            isLoading: false,
+            isProbing: false
         };
     },
     template: `
         <div class="input-wrapper">
             <label class="input-label">{{ label }}</label>
 
-            <select :value="modelValue">
+            <select :value="modelValue" @change="onModelSelected($event.target.value)">
                 <option value="" disabled>{{ isLoading ? 'Fetching models...' : placeholder }}</option>
 
-                <option v-for="model in filteredModels" :key="model.id" :value="model.id">
-                    {{ model.id }} | [{{ model.provided_by || model.owned_by || '?' }}] )
+                <option v-for="model in filteredModels" :key="model.id" :value="model.id" :hidden="isModelHidden(model)">
+                    {{ model.id }} |
+                        visual: {{ model.hasVision === true ? '✅' : (model.hasVision === false ? '❌' : '?') }} |
+                        tools: {{ model.hasTools === true ? '✅' : (model.hasTools === false ? '❌' : '?') }} |
+                        embedding: {{ model.hasEmbedding === true ? '✅' : (model.hasEmbedding === false ? '❌' : '?') }}
+                    | [{{ model.provided_by || model.owned_by || '?' }}]
                 </option>
 
                 <option v-if="modelValue && !availableModels.find(m => m.id === modelValue)" :value="modelValue">
@@ -74,10 +79,34 @@ const SettingModelDropdown = {
                 </option>
             </select>
 
-            <button class="btn-icon" @click="fetchModels(true)" :disabled="isLoading" title="Force Refresh">↻</button>
+            <button class="btn-icon" @click="fetchModels(true)" :disabled="isLoading || isProbing" title="Force Refresh & Clear Cache">↻</button>
         </div>
     `,
     methods: {
+        onModelSelected(value) {
+            this.$emit('update:modelValue', value);
+
+            const selectedModel = this.availableModels.find(m => m.id === value);
+            if (selectedModel) {
+                this.$emit('capabilities', {
+                    hasVision: selectedModel.hasVision,
+                    hasTools: selectedModel.hasTools,
+                    hasEmbedding: selectedModel.hasEmbedding
+                });
+            }
+        },
+        isModelHidden(model) {
+            if (this.fieldId === 'CUSTOM_LLM_MODEL') {
+                return model.hasEmbedding === true;
+            }
+            if (this.fieldId === 'CUSTOM_VLM_MODEL') {
+                return model.hasVision === false;
+            }
+            if (this.fieldId === 'CUSTOM_EMBEDDING_MODEL') {
+                return model.hasEmbedding === false;
+            }
+            return false;
+        },
         async fetchModels(forceRefresh = false) {
             this.isLoading = true;
             try {
@@ -94,12 +123,82 @@ const SettingModelDropdown = {
 
                 if (response.ok) {
                     const json = await response.json();
-                    this.availableModels = json.data && Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+                    let models = json.data && Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+
+                    let cachedData = {};
+                    try {
+                        cachedData = JSON.parse(localStorage.getItem(cacheKey) || '{}');
+                    } catch (e) {
+                        cachedData = {};
+                    }
+
+                    this.availableModels = models.map(model => {
+                        const cached = cachedData[model.id];
+                        return {
+                            ...model,
+                            hasVision: cached ? cached.hasVision : null,
+                            hasTools: cached ? cached.hasTools : null,
+                            hasEmbedding: cached ? cached.hasEmbedding : null
+                        };
+                    });
+
+                    this.backgroundProbeQueue(cacheKey);
                 }
             } catch (e) {
                 console.error('Network error fetching models:', e);
             } finally {
                 this.isLoading = false;
+            }
+        },
+        async backgroundProbeQueue(cacheKey) {
+            if (this.isProbing) return;
+            this.isProbing = true;
+
+            let cachedData = {};
+            try {
+                cachedData = JSON.parse(localStorage.getItem(cacheKey) || '{}');
+            } catch (e) {
+                cachedData = {};
+            }
+
+            for (let i = 0; i < this.availableModels.length; i++) {
+                const modelId = this.availableModels[i].id;
+
+                if (cachedData[modelId] !== undefined) {
+                    this.availableModels[i].hasVision = cachedData[modelId].hasVision;
+                    this.availableModels[i].hasTools = cachedData[modelId].hasTools;
+                    this.availableModels[i].hasEmbedding = cachedData[modelId].hasEmbedding;
+                    continue;
+                }
+
+                this.availableModels[i].hasVision = await this.probeModelCapability(modelId, 'vision');
+                this.availableModels[i].hasTools = await this.probeModelCapability(modelId, 'tools');
+                this.availableModels[i].hasEmbedding = await this.probeModelCapability(modelId, 'embed');
+
+                cachedData[modelId] = {
+                    hasVision: this.availableModels[i].hasVision,
+                    hasTools: this.availableModels[i].hasTools,
+                    hasEmbedding: this.availableModels[i].hasEmbedding
+                };
+                localStorage.setItem(cacheKey, JSON.stringify(cachedData));
+
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+
+            this.isProbing = false;
+        },
+        async probeModelCapability(modelId, probeType) {
+            try {
+                const localHost = window.location.protocol === 'file:' ? 'http://127.0.0.1:8080' : window.location.protocol + '//' + window.location.host;
+                const response = await fetch(`${localHost}/proxy/probe?modelId=${encodeURIComponent(modelId)}&probeType=${probeType}&fieldId=${this.fieldId}`);
+
+                if (response.ok) {
+                    const json = await response.json();
+                    return json.supported === true;
+                }
+                return false;
+            } catch (e) {
+                return false;
             }
         }
     },
@@ -233,6 +332,15 @@ const SettingsModal = {
                     data: this.apiData
                 }));
             }
+        },
+        handleCapabilities(fieldId, caps) {
+            const prefix = fieldId.replace('_MODEL', '');
+
+            this.apiData[`${prefix}_HAS_VISUALS`] = caps.hasVision;
+            this.apiData[`${prefix}_HAS_TOOLS`] = caps.hasTools;
+            this.apiData[`${prefix}_HAS_EMBEDDING`] = caps.hasEmbedding;
+
+            console.log(`Updated capabilities for ${prefix}:`, caps);
         },
         handleInputCommit(fieldId) {
             if (fieldId === 'PROXY_KEY' || fieldId === 'PROXY_ENDPOINT') {

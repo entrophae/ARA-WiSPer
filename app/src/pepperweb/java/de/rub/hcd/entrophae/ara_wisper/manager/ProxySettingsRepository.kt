@@ -37,6 +37,24 @@ object ProxySettingsRepository {
     val customLlmModel: String
         get() = getPref(Settings.LLM_MODEL, "")
 
+    val customVlmEndpoint: String
+        get() = getPref(Settings.VLM_ENDPOINT, "")
+
+    val customVlmKey: String
+        get() = getPref(Settings.VLM_KEY, "")
+
+    val customVlmModel: String
+        get() = getPref(Settings.VLM_MODEL, "")
+
+    val customEmbeddingEndpoint: String
+        get() = getPref(Settings.EMBEDDING_ENDPOINT, "")
+
+    val customEmbeddingKey: String
+        get() = getPref(Settings.EMBEDDING_KEY, "")
+
+    val customEmbeddingModel: String
+        get() = getPref(Settings.EMBEDDING_MODEL, "")
+
     val customSttEndpoint: String
         get() = getPref(Settings.STT_ENDPOINT, "")
 
@@ -75,6 +93,7 @@ object ProxySettingsRepository {
         const val CONSTANTS = "/constants"
         const val PROXY = "/proxy"
         const val PROXY_MODELS = "$PROXY/models"
+        const val PROXY_PROBE = "$PROXY/probe"
         const val RAG = "/rag"
         const val RAG_USERS = "$RAG/users"
         const val RAG_USER_HISTORY = "$RAG_USERS/history"
@@ -108,6 +127,12 @@ object ProxySettingsRepository {
         const val LLM_ENDPOINT = "CUSTOM_LLM_ENDPOINT"
         const val LLM_KEY = "CUSTOM_LLM_KEY"
         const val LLM_MODEL = "CUSTOM_LLM_MODEL"
+        const val VLM_ENDPOINT = "CUSTOM_VLM_ENDPOINT"
+        const val VLM_KEY = "CUSTOM_VLM_KEY"
+        const val VLM_MODEL = "CUSTOM_VLM_MODEL"
+        const val EMBEDDING_ENDPOINT = "CUSTOM_EMBEDDING_ENDPOINT"
+        const val EMBEDDING_KEY = "CUSTOM_EMBEDDING_KEY"
+        const val EMBEDDING_MODEL = "CUSTOM_EMBEDDING_MODEL"
         const val CUSTOM_VAD_MODEL = "CUSTOM_VAD_MODEL"
         const val STT_ENDPOINT = "CUSTOM_STT_ENDPOINT"
         const val STT_KEY = "CUSTOM_STT_KEY"

@@ -62,14 +62,20 @@ object ApiDataTemplate {
         val LLM = SettingKey(ProxySettingsRepository.Settings.LLM_ENDPOINT, R.string.label_llm_endpoint, "url", R.string.placeholder_custom_endpoint)
         val LLM_KEY = SettingKey(ProxySettingsRepository.Settings.LLM_KEY, R.string.label_llm_key, "password")
         val LLM_MODEL = SettingKey(ProxySettingsRepository.Settings.LLM_MODEL, R.string.label_llm_model, "model_select", R.string.placeholder_custom_model)
+        val VLM = SettingKey(ProxySettingsRepository.Settings.VLM_ENDPOINT, R.string.label_vlm_endpoint, "url", R.string.placeholder_custom_endpoint)
+        val VLM_KEY = SettingKey(ProxySettingsRepository.Settings.VLM_KEY, R.string.label_vlm_key, "password")
+        val VLM_MODEL = SettingKey(ProxySettingsRepository.Settings.VLM_MODEL, R.string.label_vlm_model, "model_select", R.string.placeholder_custom_model)
+        val EMBEDDING = SettingKey(ProxySettingsRepository.Settings.EMBEDDING_ENDPOINT, R.string.label_embedding_endpoint, "url", R.string.placeholder_custom_endpoint)
+        val EMBEDDING_KEY = SettingKey(ProxySettingsRepository.Settings.EMBEDDING_KEY, R.string.label_embedding_key, "password")
+        val EMBEDDING_MODEL = SettingKey(ProxySettingsRepository.Settings.EMBEDDING_MODEL, R.string.label_embedding_model, "model_select", R.string.placeholder_custom_model)
         val STT = SettingKey(ProxySettingsRepository.Settings.STT_ENDPOINT, R.string.label_stt_endpoint, "url", R.string.placeholder_custom_endpoint)
         val STT_KEY = SettingKey(ProxySettingsRepository.Settings.STT_KEY, R.string.label_stt_key, "password")
         val VAD = SettingKey(ProxySettingsRepository.Settings.CUSTOM_VAD_MODEL, R.string.label_custom_vad, "radio", options = ProxySettingsRepository.Proxy.VAD.OPTIONS, default = ProxySettingsRepository.Proxy.VAD.YAMNET)
     }
 
     object Database : SettingGroup() {
-        val PERSON_ENDPOINT = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.PERSON_DB_API_ENDPOINT, R.string.label_person_db_api, "url", R.string.placeholder_custom_endpoint)
-        val PERSON_KEY = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.PERSON_DB_KEY, R.string.label_person_db_key, "password")
+        val PERSON_ENDPOINT = SettingKey(ProxySettingsRepository.Settings.PERSON_DB_API_ENDPOINT, R.string.label_person_db_api, "url", R.string.placeholder_custom_endpoint)
+        val PERSON_KEY = SettingKey(ProxySettingsRepository.Settings.PERSON_DB_KEY, R.string.label_person_db_key, "password")
     }
 
     object Tools : SettingGroup() {
@@ -91,7 +97,7 @@ object ApiDataTemplate {
     }
 
     val allSettings: List<SettingKey> by lazy {
-        Providers.allKeys() + Proxy.allKeys() + Database.allKeys()  + Tools.allKeys() + System.allKeys()
+        Providers.allKeys() + Proxy.allKeys() + Database.allKeys() + Tools.allKeys() + System.allKeys()
     }
 
 }
