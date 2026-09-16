@@ -44,6 +44,9 @@ class ProxyPipelineManager(
     fun updateIsResponseCancelled(cancelled: Boolean) {
         Log.i(ProxySettingsRepository.TAG, "Interruption received! Cancelling proxy response.")
         this.isResponseCancelled = cancelled
+        if (cancelled) {
+            AraWisperManager.speechManager.stop()
+        }
     }
 
     fun createPipelineContext(responseId: String, systemPrompt: String, tools: JSONArray?, toolsSupported: Boolean): PipelineContext {
@@ -135,6 +138,7 @@ class ProxyPipelineManager(
         DashboardManager.sendLog(rawJson, isFromRobot = true)
         this.isResponseCancelled = false;
         updateIsResponseCancelled(false)
+        AraWisperManager.speechManager.stop()
 
         val textToProcess = latestUserText
         if (textToProcess.isNotBlank()) {
@@ -254,6 +258,14 @@ class ProxyPipelineManager(
             }
         }
 
+        val qiContextAny = pipelineContext.activeToolContext?.qiContext
+        AraWisperManager.speechManager.flush(qiContextAny) { pcmBytes ->
+            val base64Audio = android.util.Base64.encodeToString(pcmBytes, android.util.Base64.NO_WRAP)
+            serverScope.launch {
+                pipelineContext.sendPacket(WebSocketPayloads.audioDelta(pipelineContext.responseId, base64Audio))
+                pipelineContext.sendPacket(WebSocketPayloads.audioDone())
+            }
+        }
         pipelineContext.sendPacket(WebSocketPayloads.done())
 
         if (!isWaitingForAppToolResult) {
@@ -273,6 +285,16 @@ class ProxyPipelineManager(
         if (llmText.isNotBlank()) {
             pipelineContext.sendPacket(WebSocketPayloads.transcriptDelta(pipelineContext.responseId, llmText))
 
+            if (!isThinkingText) {
+                val qiContextAny = pipelineContext.activeToolContext?.qiContext
+                AraWisperManager.speechManager.processTextChunk(qiContextAny, llmText) { pcmBytes ->
+                    val base64Audio = android.util.Base64.encodeToString(pcmBytes, android.util.Base64.NO_WRAP)
+                    serverScope.launch {
+                        pipelineContext.sendPacket(WebSocketPayloads.audioDelta(pipelineContext.responseId, base64Audio))
+                    }
+                }
+            }
+            
             this.currentTurn?.let {
                 if(isThinkingText) {
                     it.toolBufferResponse = (it.toolBufferResponse ?: "") + llmText
