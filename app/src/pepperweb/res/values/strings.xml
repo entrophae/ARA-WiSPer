@@ -27,6 +27,8 @@
     <string name="label_custom_vad">VAD Model</string>
     <string name="label_stt_endpoint">STT Endpoint</string>
     <string name="label_stt_key">STT Key</string>
+    <string name="label_person_db_api">PERSON DB API</string>
+    <string name="label_person_db_key">PERSON DB Key</string>
 
     <string name="label_groq_key">Groq Key</string>
     <string name="label_tavily_key">Tavily Key</string>

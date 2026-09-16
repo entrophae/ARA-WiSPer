@@ -2,6 +2,7 @@ package de.rub.hcd.entrophae.ara_wisper.server.manager
 
 import android.util.Log
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
+import de.rub.hcd.entrophae.ara_wisper.server.network.DataBaseClient
 import io.ktor.server.websocket.DefaultWebSocketServerSession
 import io.ktor.websocket.Frame
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -58,6 +59,28 @@ object DashboardManager {
         _events.tryEmit(payload)
     }
 
+    suspend fun syncHistoryToBrowser(userId: String) {
+        val history = DataBaseClient.getUserHistory(userId)
+
+        val historyArray = JSONArray()
+        for (turn in history) {
+            historyArray.put(JSONObject().apply {
+                put("turnId", turn.turnId)
+                put("userQuery", turn.userQuery)
+                put("llmResponse", turn.llmResponse)
+                put("toolCalled", turn.toolCalled)
+                put("toolBufferResponse", turn.toolBufferResponse)
+            })
+        }
+
+        val syncPacket = JSONObject().apply {
+            put("type", "sync_local_storage")
+            put("userId", userId)
+            put("history", historyArray)
+        }
+
+        _events.tryEmit(syncPacket)
+    }
 }
 
 suspend fun DefaultWebSocketServerSession.sendToApp(jsonString: String) {

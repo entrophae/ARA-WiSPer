@@ -9,6 +9,7 @@ const app = createApp({
             isMicActive: false,
             micTimeout: null,
             showSettings: false,
+            showUserEdit: false,
             commandInput: '',
             apiMode: '',
             apiSchema: {},
@@ -27,8 +28,14 @@ const app = createApp({
                 CUSTOM_LLM_MODEL: '', 
                 CUSTOM_STT_ENDPOINT: '', CUSTOM_STT_KEY: '',
                 CUSTOM_VAD_MODEL: '',
-                SYSTEM_AUDIO_MODE: '', SYSTEM_ROUTING_MODE: ''
+                SYSTEM_AUDIO_MODE: '', SYSTEM_ROUTING_MODE: '',
+                PERSON_DB_API_ENDPOINT: '', PERSON_DB_KEY: ''
             },
+            activeUserId: localStorage.getItem('ara_active_user') || 'default_user',
+            users: [],
+            selectedUser: null,
+            userChatHistory: [],
+            userSummary: ''
         };
     },
     methods: {
@@ -174,6 +181,27 @@ const app = createApp({
                         }
                         return
                     }
+                    else if (payload.type ===  "sync_local_storage") {
+
+                        if (payload.userId === this.activeUserId) {
+                            this.userChatHistory = payload.history;
+                            // Rebuild the visual terminal logs from the fresh history
+                            this.terminalLogs = this.terminalLogs.filter(log => log.type !== 'chat-bubble');
+                            this.userChatHistory.forEach(turn => {
+                                if (turn.userQuery) {
+                                    this.terminalLogs.push({ id: turn.turnId + '_u', text: turn.userQuery, type: 'chat-bubble', sender: 'USER' });
+                                }
+                                if (turn.toolBufferResponse) {
+                                    this.terminalLogs.push({ id: turn.turnId + '_b', text: turn.toolBufferResponse, type: 'chat-bubble', sender: 'ROBOT' });
+                                }
+                                if (turn.llmResponse) {
+                                    this.terminalLogs.push({ id: turn.turnId + '_r', text: turn.llmResponse, type: 'chat-bubble', sender: 'ROBOT' });
+                                }
+                            });
+
+                            console.log(`Synced ${payload.history.length} turns for ${payload.userId}`);
+                        }
+                    }
                 } catch (e) {
                     console.error("Failed to parse message", e);
                 }
@@ -213,14 +241,137 @@ const app = createApp({
             } else {
                 this.logMessage('ERROR: Cannot save settings. Robot is disconnected!', 'log-error');
             }
-        }
+        },
+        setUserId() {
+            if (!this.activeUserId) return;
+            if (!this.isConnected || !this.socket) {
+                this.logMessage('Cannot set user, disconnected.', 'log-error');
+                return;
+            }
+
+            this.socket.send(JSON.stringify({
+                type: this.constants.MSG_SET_USER,
+                userId: this.activeUserId
+            }));
+
+            this.logMessage('Active user set to: ' + this.activeUserId, 'log-system');
+        },
+        promptNewUser() {
+            const newUser = prompt("Enter the ID for the new user:");
+            if (newUser && newUser.trim() !== "") {
+                const cleanId = newUser.trim();
+
+                // Add to list if it doesn't exist
+                if (!this.users.includes(cleanId)) {
+                    this.users.push(cleanId);
+                }
+
+                // Automatically select the new user
+                this.selectUser(cleanId);
+            }
+        },
+        async fetchUsers() {
+            try {
+                const response = await fetch(this.constants.ROUTE_RAG_USERS);
+                const fetchedUsers = await response.json();
+
+                if (!fetchedUsers.includes('default_user')) {
+                    fetchedUsers.push('default_user');
+                }
+
+                this.users = fetchedUsers;
+            } catch (error) {
+                this.logMessage('Failed to scan database for users.', 'log-error');
+                this.users = ['default_user'];
+            }
+        },
+        async loadHistory(userId) {
+            try {
+                const response = await fetch(`${this.constants.ROUTE_RAG_USERS}?userId=${userId}`);
+                const data = await response.json();
+
+                this.userChatHistory = data.history || [];
+                this.userSummary = data.chatSummary || '';
+
+                if (this.userChatHistory.length > 0) {
+                    console.log(`Loaded ${this.userChatHistory.length} turns from database for ${userId}`);
+                } else {
+                    console.log(`No history found for ${userId}, starting fresh.`);
+                }
+            } catch (error) {
+                this.logMessage(`Failed to load history for ${userId} from database.`, 'log-error');
+            }
+        },
+        async selectUser(userId) {
+            if (!userId || userId.trim() === "") return;
+            this.selectedUser = userId;
+            this.activeUserId = userId;
+            localStorage.setItem('ara_active_user', userId);
+
+            if (!this.users.includes(userId)) {
+                this.users.push(userId);
+            }
+
+            this.terminalLogs = [];
+            this.proxyLogs = [];
+
+            await this.loadHistory(userId);
+            this.setUserId()
+        },
+        async saveUserEdit(payload) {
+            this.userSummary = payload.summary;
+            this.userChatHistory = payload.history;
+
+            const requestPayload = {
+                type: this.constants.MSG_UPDATE_USER_KNOWLEDGE,
+                userId: this.selectedUser,
+                summary: this.userSummary,
+                updatedTurns: payload.modifiedTurns,
+                deletedTurnIds: payload.deletedTurnIds
+            };
+
+            this.socket.send(JSON.stringify(requestPayload));
+
+            this.logMessage(`Saved knowledge for ${this.selectedUser}.`, 'log-system');
+
+            this.showUserEdit = false;
+        },
+        async deleteUser() {
+            if (!this.selectedUser || this.selectedUser === 'default_user') {
+                this.logMessage('Cannot delete the default user.', 'log-error');
+                return;
+            }
+            this.socket.send(JSON.stringify({
+                type: this.constants.MSG_DELETE_USER,
+                userId: this.selectedUser
+            }));
+
+            this.users = this.users.filter(u => u !== this.selectedUser);
+            this.selectUser('default_user');
+            this.logMessage('User deleted.', 'log-system');
+        },
+        async clearHistory() {
+            this.socket.send(JSON.stringify({
+                type: this.constants.MSG_CLEAR_HISTORY,
+                userId: this.selectedUser
+            }));
+
+            // clear local ui instantly
+            this.terminalLogs = this.terminalLogs.filter(log => log.type !== 'chat-bubble');
+            this.userChatHistory = [];
+            this.logMessage('History cleared.', 'log-system');
+        },
     },
     async mounted() {
         await this.fetchConstants();
+        await this.fetchUsers();
+        await this.selectUser(this.activeUserId);
+
         this.connectWebSocket();
     }
 });
 
 app.component('settings-modal', SettingsModal);
+app.component('user-knowledge-modal', UserKnowledgeModal);
 
 app.mount('#app');

@@ -418,3 +418,51 @@ button:hover { background: #002340; }
     color: var(--text-main);
     line-height: 1.5;
 }
+
+/* History Visual Editor */
+.history-editor {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.history-turn-card {
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+.turn-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    color: var(--rub-blue);
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 5px;
+}
+
+.turn-textarea {
+    height: 60px !important;
+    margin: 5px 0 0 0 !important;
+    min-height: 60px;
+}
+
+.delete-btn {
+    background: transparent;
+    color: var(--rub-red);
+    padding: 2px 8px;
+    font-size: 1.1rem;
+    margin-left: 1em;
+}
+.delete-btn:hover {
+    background: var(--rub-red);
+    color: var(--card-bg);
+}

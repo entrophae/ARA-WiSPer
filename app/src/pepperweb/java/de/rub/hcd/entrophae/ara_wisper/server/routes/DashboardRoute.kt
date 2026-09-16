@@ -18,7 +18,9 @@ import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appPrefs
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appString
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings
+import de.rub.hcd.entrophae.ara_wisper.server.data.ChatTurn
 import de.rub.hcd.entrophae.ara_wisper.server.manager.DashboardManager
+import de.rub.hcd.entrophae.ara_wisper.server.network.DataBaseClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.WebSocketPayloads
 import de.rub.hcd.entrophae.ara_wisper.server.network.authBearer
 import io.ktor.http.ContentType
@@ -126,6 +128,7 @@ private suspend fun DefaultWebSocketServerSession.sendInitialApiKeys() {
     val schemaObj = JSONObject().apply {
         // put("providers", ApiDataTemplate.Providers.toUiSchema()) // Not used cause we use custom llms here
         put("proxy", ApiDataTemplate.Proxy.toUiSchema())
+        put("database", ApiDataTemplate.Database.toUiSchema())
         put("tools", ApiDataTemplate.Tools.toUiSchema())
         put("system", ApiDataTemplate.System.toUiSchema())
     }
@@ -147,6 +150,15 @@ private suspend fun DefaultWebSocketServerSession.syncRobotStatus(viewModel: Cha
     }
 }
 
+private suspend fun DefaultWebSocketServerSession.syncChatHistory(viewModel: ChatViewModel) {
+    viewModel.messageList.collect { messages ->
+        val payload = WebSocketPayloads.dashboardPayload(
+            ProxySettingsRepository.Dashboard.Events.CHAT_UPDATE,
+            JSONArray(Gson().toJson(messages)))
+        sendJsonToClient(payload)
+    }
+}
+
 private suspend fun DefaultWebSocketServerSession.handleDashboardCommand(rawJson: String, viewModel: ChatViewModel) {
     try {
         val json = JSONObject(rawJson)
@@ -158,6 +170,19 @@ private suspend fun DefaultWebSocketServerSession.handleDashboardCommand(rawJson
             ProxySettingsRepository.Dashboard.Events.CHAT_COMMAND -> {
                 processChatCommand(json, viewModel)
             }
+            ProxySettingsRepository.Dashboard.Events.SET_USER -> {
+                processSetUser(json, viewModel)
+            }
+            ProxySettingsRepository.Dashboard.Events.UPDATE_USER_KNOWLEDGE -> {
+                processUpdateUserKnowledge(json, viewModel)
+            }
+            ProxySettingsRepository.Dashboard.Events.DELETE_USER -> {
+                processDeleteUser(json, viewModel)
+            }
+            ProxySettingsRepository.Dashboard.Events.CLEAR_HISTORY -> {
+                processClearHistory(json, viewModel)
+            }
+
             else -> {
                 DashboardManager.sendError("Unknown command type received")
             }
@@ -178,6 +203,71 @@ private fun processChatCommand(json: JSONObject, viewModel: ChatViewModel) {
     } else {
         viewModel.sendMessageToRealtimeAPI(text, requestResponse = true, allowInterrupt = true)
     }
+}
+private suspend fun processSetUser(json: JSONObject, viewModel: ChatViewModel) {
+    val newUserId = json.optString("userId", "default_user")
+    ProxySettingsRepository.activeUserId = newUserId
+    DataBaseClient.addUser(newUserId)
+
+    viewModel.startNewSession()
+    Log.i(ProxySettingsRepository.TAG, "Active User changed to: $newUserId")
+    DashboardManager.syncHistoryToBrowser(newUserId)
+}
+private suspend fun processDeleteUser(json: JSONObject, viewModel: ChatViewModel) {
+    val userId = json.optString("userId")
+    if (userId.isNotEmpty() && userId != "default_user") {
+        DataBaseClient.deleteUser(userId)
+        val newUserId = "default_user"
+        ProxySettingsRepository.activeUserId = newUserId
+
+        viewModel.startNewSession()
+        Log.i(ProxySettingsRepository.TAG, "Active User changed to: $newUserId")
+        DashboardManager.syncHistoryToBrowser(newUserId)
+    }
+}
+private suspend fun processClearHistory(json: JSONObject, viewModel: ChatViewModel) {
+    val userId = json.optString("userId")
+    if (userId.isNotEmpty()) {
+        DataBaseClient.deleteHistory(userId)
+        viewModel.startNewSession()
+        Log.i(ProxySettingsRepository.TAG, "Chat History cleared: $userId")
+        DashboardManager.syncHistoryToBrowser(userId)
+    }
+}
+
+private suspend fun processUpdateUserKnowledge(json: JSONObject, viewModel: ChatViewModel) {
+    val userId = json.optString("userId")
+    if (userId.isEmpty()) return
+
+    Log.i("AraWisper", "Processing WebSocket knowledge update for: $userId")
+
+    val summary = json.optString("summary")
+    DataBaseClient.updateSummary(userId, summary)
+
+    val deletedTurns = json.optJSONArray("deletedTurnIds")
+    if (deletedTurns != null) {
+        for (i in 0 until deletedTurns.length()) {
+            val turnId = deletedTurns.getString(i)
+            DataBaseClient.deleteTurn(userId, turnId)
+        }
+    }
+
+    val updatedTurns = json.optJSONArray("updatedTurns")
+    if (updatedTurns != null) {
+        for (i in 0 until updatedTurns.length()) {
+            val turnObj = updatedTurns.getJSONObject(i)
+            val turn = ChatTurn(
+                userId = userId,
+                turnId = turnObj.optString("turnId"),
+                userQuery = turnObj.optString("userQuery"),
+                llmResponse = turnObj.optString("llmResponse"),
+                toolCalled = if (turnObj.isNull("toolCalled")) null else turnObj.optString("toolCalled"),
+                toolBufferResponse = if (turnObj.isNull("toolBufferResponse")) null else turnObj.optString("toolBufferResponse")
+            )
+            DataBaseClient.updateHistory(turn)
+        }
+    }
+    DashboardManager.syncHistoryToBrowser(userId)
 }
 
 private suspend fun DefaultWebSocketServerSession.processSaveKeys(data: JSONObject, viewModel: ChatViewModel) {

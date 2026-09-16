@@ -9,7 +9,6 @@ import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appAssets
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import de.rub.hcd.entrophae.ara_wisper.server.routes.ragRouting
 import de.rub.hcd.entrophae.ara_wisper.server.routes.constantsRouting
-import de.rub.hcd.entrophae.ara_wisper.server.routes.experimentRouting
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -56,6 +55,7 @@ class AraWisperServer(private val port: Int = 8080) {
                 constantsRouting(viewModel)
                 dashboardRouting(viewModel)
                 proxyRouting(toolContext)
+                ragRouting()
 
                 // Dynamic routing for all files
                 get("/{fileName...}") {

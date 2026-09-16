@@ -28,7 +28,21 @@ object LlmClient {
                 put("role", "system")
                 put("content", pipelineContext.systemPrompt)
             })
-            
+            val history = DataBaseClient.getUserHistory(ProxySettingsRepository.activeUserId)
+            for (turn in history) {
+                if (turn.userQuery.isNotBlank()) {
+                    put(JSONObject().apply {
+                        put("role", "user")
+                        put("content", turn.userQuery)
+                    })
+                }
+                if (turn.llmResponse.isNotBlank()) {
+                    put(JSONObject().apply {
+                        put("role", "assistant")
+                        put("content", turn.llmResponse)
+                    })
+                }
+            }
             put(JSONObject().apply {
                 put("role", "user")
                 put("content", textToProcess)

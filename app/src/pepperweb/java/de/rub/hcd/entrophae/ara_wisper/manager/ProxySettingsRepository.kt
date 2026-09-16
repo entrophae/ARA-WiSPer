@@ -43,6 +43,12 @@ object ProxySettingsRepository {
     val customSttKey: String
         get() = getPref(Settings.STT_KEY, "")
     
+    val databasePersonApiEndpoint: String
+        get() = getPref(Settings.PERSON_DB_API_ENDPOINT, "").removeSuffix("/")
+
+    val databasePersonKey: String
+        get() = getPref(Settings.PERSON_DB_KEY, "")
+        
     val customSystemPrompt: String
         get() = getPref(Settings.SYSTEM_PROMPT, "")
 
@@ -62,11 +68,22 @@ object ProxySettingsRepository {
             ""
         }
 
+    var activeUserId: String = "default_user"
+    
     object Routes {
         const val WS = "/ws"
         const val CONSTANTS = "/constants"
         const val PROXY = "/proxy"
         const val PROXY_MODELS = "$PROXY/models"
+        const val RAG = "/rag"
+        const val RAG_USERS = "$RAG/users"
+        const val RAG_USER_HISTORY = "$RAG_USERS/history"
+        const val RAG_USER_SUMMARY = "$RAG_USERS/summary"
+        const val DB_API_USERS = "/api/users"
+        const val DB_API_USERS_KNOWLEDGE = "/api/knowledge/users"
+        const val DB_API_USERS_HISTORY = "/api/knowledge/history"
+        const val DB_API_USERS_TURN = "/api/knowledge/history/turn"
+        const val DB_API_USERS_SUMMARY = "/api/knowledge/summary"
     }
 
     object Modes {
@@ -94,6 +111,8 @@ object ProxySettingsRepository {
         const val CUSTOM_VAD_MODEL = "CUSTOM_VAD_MODEL"
         const val STT_ENDPOINT = "CUSTOM_STT_ENDPOINT"
         const val STT_KEY = "CUSTOM_STT_KEY"
+        const val PERSON_DB_API_ENDPOINT = "PERSON_DB_API_ENDPOINT"
+        const val PERSON_DB_KEY = "PERSON_DB_KEY"
 
         const val OPENAI_KEY = "OPENAI_API_KEY"
         const val AZURE_ENDPOINT = "AZURE_OPENAI_ENDPOINT"
@@ -116,6 +135,10 @@ object ProxySettingsRepository {
             const val CHAT_UPDATE = "CHAT_UPDATE"
             const val CHAT_COMMAND = "CHAT_COMMAND"
             const val MIC_ACTIVITY = "MIC_ACTIVITY"
+            const val SET_USER = "SET_USER"
+            const val DELETE_USER = "DELETE_USER"
+            const val UPDATE_USER_KNOWLEDGE = "UPDATE_USER_KNOWLEDGE"
+            const val CLEAR_HISTORY = "CLEAR_HISTORY"
         }
     }
 

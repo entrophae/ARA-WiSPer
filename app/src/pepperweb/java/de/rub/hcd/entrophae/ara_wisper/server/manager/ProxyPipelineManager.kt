@@ -9,6 +9,7 @@ import org.json.JSONObject
 import de.rub.hcd.entrophae.ara_wisper.server.data.PipelineContext
 import de.rub.hcd.entrophae.ara_wisper.interceptor.ToolInterceptor
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
+import de.rub.hcd.entrophae.ara_wisper.server.network.DataBaseClient
 import de.rub.hcd.entrophae.ara_wisper.server.data.ChatTurn
 import de.rub.hcd.entrophae.ara_wisper.server.data.createTurn
 import de.rub.hcd.entrophae.ara_wisper.server.data.logTurnState
@@ -40,7 +41,9 @@ class ProxyPipelineManager(
     var lastKnownUserQuery = "" // Lifetime until new query enters. Reminds LLM the context of the tool-use
     var queryWaitingForTool = "" // Traps the context during tool execution
 
-    val currentUserId = "default"
+    val currentUserId: String
+        get() = ProxySettingsRepository.activeUserId
+
     var currentTurn: ChatTurn? = null
     private val currentTurnAudioBuffer = java.io.ByteArrayOutputStream()
     var isWaitingForAppToolResult = false
@@ -93,6 +96,7 @@ class ProxyPipelineManager(
                             it.llmResponse = "$fixedTruncatedText-"
                             Log.i(ProxySettingsRepository.TAG, "Truncation applied!\nOriginal: $originalText\nTruncated: ${it.llmResponse}")
                             logTurnState("Truncated via STT transcription", it)
+                            DataBaseClient.updateHistory(it)
                         }
                     }
                 }
@@ -364,10 +368,30 @@ class ProxyPipelineManager(
 
                 DashboardManager.sendChat(isUser = false, text = turn.llmResponse)
 
+                DataBaseClient.updateHistory(turn)
+
             }
             logTurnState("Finished", this.currentTurn)
         }
 
+    }
+    
+    suspend fun recreateSession() {
+        // Fetch the turns from your database
+        val savedTurns = DataBaseClient.getUserHistory(currentUserId)
+
+        for (turn in savedTurns) {
+            // Recreate User message
+            val userPayload = WebSocketPayloads.itemCreateUser(turn.turnId, turn.userQuery)
+            sendToApp(userPayload)
+            DashboardManager.sendChat(isUser = true, text = turn.userQuery)
+
+            // Recreate LLM message
+            val llmPayload = WebSocketPayloads.itemCreateLLM(turn.turnId + "_llm", turn.llmResponse)
+            sendToApp(llmPayload)
+            DashboardManager.sendChat(isUser = false, text = turn.llmResponse)
+
+        }
     }
 
     private suspend fun processLlmText(llmText: String, pipelineContext: PipelineContext, isThinkingText: Boolean = false) {

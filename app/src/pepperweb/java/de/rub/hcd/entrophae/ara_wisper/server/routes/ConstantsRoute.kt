@@ -28,6 +28,14 @@ fun Route.constantsRouting(viewModel: ChatViewModel) {
 
             "MSG_${ProxySettingsRepository.Logging.TYPE_PROXY_LOG}" to ProxySettingsRepository.Logging.TYPE_PROXY_LOG,
 
+            "MSG_${ProxySettingsRepository.Dashboard.Events.SET_USER}" to ProxySettingsRepository.Dashboard.Events.SET_USER,
+
+            "MSG_${ProxySettingsRepository.Dashboard.Events.DELETE_USER}" to ProxySettingsRepository.Dashboard.Events.DELETE_USER,
+
+            "MSG_${ProxySettingsRepository.Dashboard.Events.UPDATE_USER_KNOWLEDGE}" to ProxySettingsRepository.Dashboard.Events.UPDATE_USER_KNOWLEDGE,
+
+            "MSG_${ProxySettingsRepository.Dashboard.Events.CLEAR_HISTORY}" to ProxySettingsRepository.Dashboard.Events.CLEAR_HISTORY,
+
             // VAD Models
             "VAD_${ProxySettingsRepository.Proxy.VAD.WEBRTC.split(' ')[0].uppercase()}" to ProxySettingsRepository.Proxy.VAD.WEBRTC,
 
@@ -50,7 +58,9 @@ fun Route.constantsRouting(viewModel: ChatViewModel) {
             "MODE_${ProxySettingsRepository.Modes.ROUTING.CUSTOM.split('_')[0].uppercase()}" to ProxySettingsRepository.Modes.ROUTING.CUSTOM,
 
             // Routes
-            "ROUTE_${ProxySettingsRepository.Routes.WS.trim('/').replace('/', '_').uppercase()}" to ProxySettingsRepository.Routes.WS
+            "ROUTE_${ProxySettingsRepository.Routes.WS.trim('/').replace('/', '_').uppercase()}" to ProxySettingsRepository.Routes.WS,
+
+            "ROUTE_${ProxySettingsRepository.Routes.RAG_USERS.trim('/').replace('/', '_').uppercase()}" to ProxySettingsRepository.Routes.RAG_USERS,
         )
 
         // Respond with the JSON object

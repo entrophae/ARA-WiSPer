@@ -67,6 +67,11 @@ object ApiDataTemplate {
         val VAD = SettingKey(ProxySettingsRepository.Settings.CUSTOM_VAD_MODEL, R.string.label_custom_vad, "radio", options = ProxySettingsRepository.Proxy.VAD.OPTIONS, default = ProxySettingsRepository.Proxy.VAD.YAMNET)
     }
 
+    object Database : SettingGroup() {
+        val PERSON_ENDPOINT = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.PERSON_DB_API_ENDPOINT, R.string.label_person_db_api, "url", R.string.placeholder_custom_endpoint)
+        val PERSON_KEY = SettingKey(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings.PERSON_DB_KEY, R.string.label_person_db_key, "password")
+    }
+
     object Tools : SettingGroup() {
         val VISION_ANALYSIS = SettingKey(ProxySettingsRepository.Settings.GROQ_KEY, R.string.label_groq_key, "password")
         val WEB_SEARCH_KEY = SettingKey(ProxySettingsRepository.Settings.TAVILY_KEY, R.string.label_tavily_key, "password", R.string.placeholder_tavily_key)
@@ -86,7 +91,7 @@ object ApiDataTemplate {
     }
 
     val allSettings: List<SettingKey> by lazy {
-        Providers.allKeys() + Proxy.allKeys() + Tools.allKeys() + System.allKeys()
+        Providers.allKeys() + Proxy.allKeys() + Database.allKeys()  + Tools.allKeys() + System.allKeys()
     }
 
 }

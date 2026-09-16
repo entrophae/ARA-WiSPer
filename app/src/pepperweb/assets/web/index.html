@@ -52,12 +52,25 @@
                     <button @click="sendCommand">Send to System</button>
                 </div>
             </div>
+            <div class="panel">
+                <h2>User Actions</h2>
+                <div class="control-group" v-if="users.length > 0">
+                    <select v-model="activeUserId" @change="selectUser(activeUserId)">
+                        <option disabled value="">Select an existing user</option>
+                        <option v-for="userId in users" :key="userId" :value="userId">
+                            {{ userId }}
+                        </option>
+                    </select>
+                    <button @click="promptNewUser" title="Add new user">Add New</button>
+                    <button @click="showUserEdit = true" title="Edit user knowledge" :disabled="!selectedUser">Edit Knowledge</button>
+                </div>
+            </div>
         </div>
         <div class="panel panel-fill">
             <h2>Live System Log</h2>
             <div class="terminal" id="terminalLog" ref="terminalLog">
                 <div v-for="log in terminalLogs" :key="log.id"
-                     :class="['log-entry', log.type, log.sender ? log.sender.toLowerCase() : '']">
+                    :class="['log-entry', log.type, log.sender ? log.sender.toLowerCase() : '']">
 
                     <span :class="log.type" v-if="log.type !== 'chat-bubble'">{{ log.text }}</span>
 
@@ -76,6 +89,17 @@
         @close="showSettings = false"
         @save="saveConfig">
     </settings-modal>
+
+    <user-knowledge-modal
+        v-if="showUserEdit"
+        :user-id="selectedUser"
+        :initial-summary="userSummary"
+        :initial-history="userChatHistory"
+        @close="showUserEdit = false"
+        @clear="clearHistory"
+        @delete="deleteUser"
+        @save="saveUserEdit">
+    </user-knowledge-modal>
 
     <div class="toast-container">
         <transition-group name="toast-fade">
