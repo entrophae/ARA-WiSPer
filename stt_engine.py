@@ -7,8 +7,15 @@ import base64
 import numpy as np
 import asyncio
 import traceback
+import ctranslate2
 
-model = WhisperModel("medium", device="cpu", compute_type="int8")
+isGpu = ctranslate2.get_cuda_device_count() > 0;
+
+model = "large-v2" if isGpu else "base";
+device = "cuda" if isGpu else "cpu";
+compute_type = "float16" if isGpu else "int8";
+
+model = WhisperModel(model, device=device, compute_type=compute_type)
 
 async def start_base64_task(audio_b64: str, label="🤖 Robot API"):
     import base64
