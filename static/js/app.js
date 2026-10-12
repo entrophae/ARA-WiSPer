@@ -59,7 +59,7 @@ document.addEventListener("DOMContentLoaded", () => {
     fileSendBtn.disabled = true;
     setRecordingState(false);
     updateStats();
-    loadHistory
+    loadHistory();;
 
     fileInput.addEventListener("change", () => {
         fileSendBtn.disabled = !fileInput.files.length;
