@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>API Gateway Status</title>
+    <link rel="stylesheet" href="{{ base_path }}/static/css/style.css">
+    <script src="{{ base_path }}/static/js/app.js"></script>
+</head>
+<body>
+    <div id="app">
+        <div id="optionsPanel">
+            <div class="card">
+                <h3>REST API (Connection URL)</h3>
+                <div class="option" id="apiOption">
+                    <input type="text" id="apiInput" readonly dir="rtl">
+                    <button id="copyApiBtn">Copy</button>
+                </div>
+            </div>
+            <div class="card">
+                <h3>PostgreSQL Vault</h3>
+                <div class="option status-container">
+                    <span id="db-status" class="status-text">Checking... ⏳</span>
+                </div>
+                <ul id="table-list" class="result-el clean-list" style="display: none">
+                    <li class="loading-text">Loading tables...</li>
+                </ul>
+            </div>
+        </div>
+
+        <div id="optionsPanel">
+            <div class="card flex-card">
+                <h3>Docs</h3>
+                <iframe src="{{ base_path }}/docs" title="API Documentation"></iframe>
+            </div>
+        </div>
+        
+        <div id="error-message" class="result-el error-banner"></div>
+    </div>
+</body>
+</html>

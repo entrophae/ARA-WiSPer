@@ -1,0 +1,14 @@
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - postgresql
+  - pgvector
+  - pip
+  - pip:
+    - fastapi
+    - uvicorn
+    - pydantic
+    - asyncpg
+    - python-dotenv
+    - gunicorn
