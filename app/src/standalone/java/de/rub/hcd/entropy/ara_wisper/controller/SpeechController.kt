@@ -6,13 +6,16 @@ import android.util.Log
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.collections.remove
 
 class SpeechController(private val context: Context) {
+    private val lock = Any()
     private val sentenceBuffer = java.lang.StringBuilder()
     private var textToSpeech: TextToSpeech? = null
     private var isTtsInitialized = false
 
     private val pendingTtsTasks = ConcurrentHashMap<String, Pair<File, (ByteArray) -> Unit>>()
+    private var onFlushComplete: (() -> Unit)? = null
 
     init {
         textToSpeech = TextToSpeech(context) { status ->
@@ -22,10 +25,10 @@ class SpeechController(private val context: Context) {
                     isTtsInitialized = true
                     setupTtsListener()
                 } else {
-                    Log.e("SpeechController", "TTS Language is not supported")
+                    Log.e(TAG, "TTS Language is not supported")
                 }
             } else {
-                Log.e("SpeechController", "TTS Initialization failed")
+                Log.e(TAG, "TTS Initialization failed")
             }
         }
     }
@@ -35,34 +38,40 @@ class SpeechController(private val context: Context) {
             override fun onStart(id: String?) {}
 
             override fun onDone(id: String?) {
-                val task = pendingTtsTasks.remove(id)
-                if (task != null) {
-                    val tempFile = task.first
-                    val onPcmReady = task.second
-
-                    if (tempFile.exists()) {
-                        try {
-                            val fileBytes = tempFile.readBytes()
-                            val pcmData = if (fileBytes.size > 44) fileBytes.copyOfRange(44, fileBytes.size) else ByteArray(0)
-                            tempFile.delete()
-
-                            if (pcmData.isNotEmpty()) {
-                                onPcmReady(pcmData)
-                            }
-                        } catch (e: Exception) {
-                            Log.e("SpeechController", "Failed to read synthesized audio file", e)
-                            tempFile.delete()
-                        }
-                    }
-                }
+                handleTaskCompletion(id)
             }
 
             @Deprecated("Deprecated in Java")
             override fun onError(id: String?) {
-                val task = pendingTtsTasks.remove(id)
-                task?.first?.delete()
+                handleTaskCompletion(id, isError = true)
             }
         })
+    }
+
+    private fun handleTaskCompletion(id: String?, isError: Boolean = false) {
+        val task = pendingTtsTasks.remove(id)
+        if (task != null) {
+            val tempFile = task.first
+            val onPcmReady = task.second
+            if (!isError && tempFile.exists()) {
+                try {
+                    val fileBytes = tempFile.readBytes()
+                    val pcmData = if (fileBytes.size > 44) fileBytes.copyOfRange(44, fileBytes.size) else ByteArray(0)
+                    if (pcmData.isNotEmpty()) {
+                        onPcmReady(pcmData)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to read synthesized audio file", e)
+                }
+            }
+            tempFile.delete()
+        }
+        synchronized(lock) {
+            if (pendingTtsTasks.isEmpty()) {
+                onFlushComplete?.invoke()
+                onFlushComplete = null
+            }
+        }
     }
 
     fun processTextChunk(qiContextAny: Any?, text: String, onPcmReady: ((ByteArray) -> Unit)?) {
@@ -84,11 +93,19 @@ class SpeechController(private val context: Context) {
         }
     }
 
-    fun flush(qiContextAny: Any?, onPcmReady: ((ByteArray) -> Unit)?) {
+    fun flush(qiContextAny: Any?, onPcmReady: ((ByteArray) -> Unit)?, onComplete: (() -> Unit)? = null) {
         val leftoverText = sentenceBuffer.toString()
         if (leftoverText.isNotBlank()) {
             speakSentence(qiContextAny, leftoverText, onPcmReady)
             sentenceBuffer.clear()
+        }
+
+        synchronized(lock) {
+            if (pendingTtsTasks.isEmpty()) {
+                onComplete?.invoke()
+            } else {
+                onFlushComplete = onComplete
+            }
         }
     }
 
@@ -114,6 +131,7 @@ class SpeechController(private val context: Context) {
         textToSpeech?.stop()
         pendingTtsTasks.values.forEach { it.first.delete() }
         pendingTtsTasks.clear()
+        onFlushComplete = null
     }
 
     fun destroy() {

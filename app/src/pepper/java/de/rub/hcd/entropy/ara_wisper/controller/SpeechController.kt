@@ -31,14 +31,22 @@ class SpeechController(private val context: Context) {
         }
     }
 
-    fun flush(qiContextAny: Any?, onPcmReady: ((ByteArray) -> Unit)?) {
+    fun flush(qiContextAny: Any?, onPcmReady: ((ByteArray) -> Unit)?, onComplete: (() -> Unit)? = null) {
         val leftoverText = sentenceBuffer.toString()
         if (leftoverText.isNotBlank()) {
             speakSentence(qiContextAny, leftoverText, onPcmReady)
             sentenceBuffer.clear()
         }
-    }
 
+        val future = activeSayFuture
+        if (future == null) {
+            onComplete?.invoke()
+        } else {
+            future.thenConsume {
+                onComplete?.invoke()
+            }
+        }
+    }
     private fun speakSentence(qiContextAny: Any?, sentence: String, onPcmReady: ((ByteArray) -> Unit)?) {
         if (sentence.isBlank()) return
         try {

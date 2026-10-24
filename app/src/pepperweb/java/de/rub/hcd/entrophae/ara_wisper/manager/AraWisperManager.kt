@@ -20,13 +20,12 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
     lateinit var app: Application
         private set
 
-    lateinit var speechManager: de.rub.hcd.entrophae.ara_wisper.manager.SpeechManager
+    lateinit var speechManager: SpeechManager
         private set
 
     fun init(application: Application) {
         app = application
-        speechManager =
-            _root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.SpeechManager(app)
+        speechManager = SpeechManager(app)
     }
 
     val appContext: Context
@@ -84,10 +83,15 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
         if (activity is ChatActivity) {
             webServer?.stopServer()
             webServer = null
+            currentChatActivity = null
         }
     }
 
-    override fun onActivityResumed(activity: Activity) {}
+    override fun onActivityResumed(activity: Activity) {
+        if (activity is ChatActivity) {
+            currentChatActivity = activity
+        }
+    }
     override fun onActivityPaused(activity: Activity) {}
     override fun onActivityStopped(activity: Activity) {}
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}

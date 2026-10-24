@@ -55,51 +55,12 @@ class ProxyPipelineManager(
         }
     }
 
-    fun fixTranscribedTruncatedText(original: String, truncated: String): String {
-        if (original.isBlank() || truncated.isBlank()) return original
-
-        // Extract just the spoken words, ignoring all punctuation and markdown
-        val wordRegex = Regex("[\\p{L}\\p{N}]+")
-        val truncatedWordCount = wordRegex.findAll(truncated).count()
-        val originalWords = wordRegex.findAll(original).toList()
-
-        if (truncatedWordCount == 0 || originalWords.isEmpty()) return original
-
-        // Take exactly the number of words STT heard, capped at the original length
-        val wordsToKeep = minOf(truncatedWordCount, originalWords.size)
-
-        // Find the index in the original string right after that final word
-        val cutoffIndex = originalWords[wordsToKeep - 1].range.last + 1
-        return original.substring(0, cutoffIndex)
-    }
-
     fun handleItemTruncated(json: JSONObject) {
         val audioEndMs = json.optInt("audio_end_ms", 0)
-        if (audioEndMs > 0) {
-            serverScope.launch {
-                // 16kHz PCM16 mono = 32 bytes per millisecond
-                val byteCount = audioEndMs * 32
-                val allBytes = currentTurnAudioBuffer.toByteArray()
+        if (audioEndMs <= 0) return
 
-                if (allBytes.isNotEmpty() && byteCount > 0) {
-                    val sliceLength = minOf(byteCount, allBytes.size)
-                    val slicedAudio = allBytes.copyOfRange(0, sliceLength)
-                    val base64Audio = android.util.Base64.encodeToString(slicedAudio, android.util.Base64.NO_WRAP)
-
-                    val rawTruncatedText = SttClient.sendAudioChunk(base64Audio)
-
-                    currentTurn?.let {
-                        if (rawTruncatedText.isNotBlank()) {
-                            val originalText = it.llmResponse
-                            val fixedTruncatedText = fixTranscribedTruncatedText(originalText, rawTruncatedText)
-                            it.llmResponse = "$fixedTruncatedText-"
-                            Log.i(ProxySettingsRepository.TAG, "Truncation applied!\nOriginal: $originalText\nTruncated: ${it.llmResponse}")
-                            logTurnState("Truncated via STT transcription", it)
-                            DataBaseClient.updateHistory(it)
-                        }
-                    }
-                }
-            }
+        serverScope.launch {
+            SttClient.handleAudioTruncation(currentTurn, audioEndMs, audioProcessor)
         }
     }
 
@@ -221,7 +182,8 @@ class ProxyPipelineManager(
 
             latestUserText = ""
             audioProcessor.reset()
-            
+            this.currentTurn?.audioBuffer?.reset()
+
             serverScope.launch {
                 executePipeline(audioData = "", initialText = textToProcess, itemId = itemId)
             }
@@ -398,6 +360,7 @@ class ProxyPipelineManager(
             if (!isThinkingText) {
                 val qiContextAny = AraWisperManager.currentChatActivity?.toolContext?.qiContext
                 AraWisperManager.speechManager.processTextChunk(qiContextAny, llmText) { pcmBytes ->
+                    this.currentTurn?.audioBuffer?.write(pcmBytes)
                     val base64Audio = android.util.Base64.encodeToString(pcmBytes, android.util.Base64.NO_WRAP)
                     serverScope.launch {
                         pipelineContext.sendPacket(WebSocketPayloads.audioDelta(pipelineContext.responseId, base64Audio))

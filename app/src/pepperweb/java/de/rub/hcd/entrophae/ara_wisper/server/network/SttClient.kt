@@ -3,6 +3,9 @@ package de.rub.hcd.entrophae.ara_wisper.server.network
 import android.util.Log
 import ch.fhnw.pepper_realtime.network.HttpClientManager
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
+import de.rub.hcd.entrophae.ara_wisper.server.data.ChatTurn
+import de.rub.hcd.entrophae.ara_wisper.server.data.logTurnState
+import de.rub.hcd.entrophae.ara_wisper.server.service.AudioProcessor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -38,6 +41,40 @@ object SttClient {
         } catch (e: Exception) {
             Log.e(ProxySettingsRepository.TAG, "STT Request error", e)
             ""
+        }
+    }
+
+    fun fixTranscribedTruncatedText(original: String, truncated: String): String {
+        if (original.isBlank() || truncated.isBlank()) return original
+
+        // Extract just the spoken words, ignoring all punctuation and markdown
+        val wordRegex = Regex("[\\p{L}\\p{N}]+")
+        val truncatedWordCount = wordRegex.findAll(truncated).count()
+        val originalWords = wordRegex.findAll(original).toList()
+
+        if (truncatedWordCount == 0 || originalWords.isEmpty()) return original
+
+        // Take exactly the number of words STT heard, capped at the original length
+        val wordsToKeep = minOf(truncatedWordCount, originalWords.size)
+
+        // Find the index in the original string right after that final word
+        val cutoffIndex = originalWords[wordsToKeep - 1].range.last + 1
+        return original.substring(0, cutoffIndex)
+    }
+
+    suspend fun handleAudioTruncation( currentTurn: ChatTurn?, audioEndMs: Int, audioProcessor: AudioProcessor ) {
+        val turnObj = currentTurn ?: return
+        val audioBytes = turnObj.audioBuffer.toByteArray()
+        val base64Audio = audioProcessor.sliceBufferAsBase64(audioBytes, audioEndMs) ?: return
+
+        val rawTruncatedText = sendAudioChunk(base64Audio)
+        if (rawTruncatedText.isNotBlank()) {
+            val originalText = turnObj.llmResponse
+            val fixedText = fixTranscribedTruncatedText(originalText, rawTruncatedText)
+            turnObj.llmResponse = "$fixedText-"
+
+            logTurnState("Truncated via STT transcription", turnObj)
+            DataBaseClient.updateHistory(turnObj)
         }
     }
 }

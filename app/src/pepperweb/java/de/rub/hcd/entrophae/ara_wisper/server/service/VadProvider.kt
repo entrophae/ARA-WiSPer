@@ -17,6 +17,7 @@ import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appContext
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 
 class VadProvider (
+    val frameSizeBytes: Int,
     val isSpeech: (ByteArray) -> Boolean,
     val close: () -> Unit
 ) {
@@ -34,6 +35,7 @@ class VadProvider (
                     )
 
                     VadProvider(
+                        frameSizeBytes = 320 * 2,
                         isSpeech = webrtc::isSpeech,
                         close = webrtc::close
                     )
@@ -50,6 +52,7 @@ class VadProvider (
                         speechDurationMs = 50
                     )
                     VadProvider(
+                        frameSizeBytes = 512 * 2,
                         isSpeech = silero::isSpeech,
                         close = silero::close
                     )
@@ -61,10 +64,11 @@ class VadProvider (
                         sampleRate = yamnetSampleRate.SAMPLE_RATE_16K,
                         frameSize = yamnetFrameSize.FRAME_SIZE_243,
                         mode = yamnetMode.NORMAL,
-                        silenceDurationMs = 30,
+                        silenceDurationMs = 300,
                         speechDurationMs = 30
                     )
                     VadProvider(
+                        frameSizeBytes = 243 * 2,
                         isSpeech = { bytes ->
                             val speech = yamnet.classifyAudio("Speech", bytes)
                             when (speech.label) {
@@ -73,10 +77,14 @@ class VadProvider (
                                     "Speech Detected: " + speech.score
                                 )
 
-                                else -> Log.i(
-                                    ProxySettingsRepository.TAG,
-                                    "Noise Detected as ${speech.label}: " + speech.score
-                                )
+                                else -> {
+                                    if (speech.score > 0.1) {
+                                        Log.i(
+                                            ProxySettingsRepository.TAG,
+                                            "Noise Detected as ${speech.label}: " + speech.score
+                                        )
+                                    }
+                                }
                             }
                             speech.label == "Speech"
                         },

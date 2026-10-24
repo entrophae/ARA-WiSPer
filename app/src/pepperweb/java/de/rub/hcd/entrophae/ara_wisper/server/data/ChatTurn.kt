@@ -18,7 +18,8 @@ data class ChatTurn(
     var userQuery: String = "",
     var llmResponse: String = "",
     var toolCalled: String? = null,
-    var toolBufferResponse: String? = null
+    var toolBufferResponse: String? = null,
+    var audioBuffer: ByteArrayOutputStream = ByteArrayOutputStream()
 )
 
 fun createTurn(userId: String, turnId: String, userQuery: String, currentTurn: ChatTurn?): ChatTurn {

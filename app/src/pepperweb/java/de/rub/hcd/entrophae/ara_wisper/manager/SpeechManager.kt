@@ -2,6 +2,8 @@ package de.rub.hcd.entrophae.ara_wisper.manager
 
 import android.content.Context
 import de.rub.hcd.entrophae.ara_wisper.controller.SpeechController
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 class SpeechManager(context: Context) {
     private val speechController = SpeechController(context)
@@ -10,8 +12,18 @@ class SpeechManager(context: Context) {
         speechController.processTextChunk(qiContext, text, onPcmReady)
     }
 
-    fun flush(qiContext: Any?, onPcmReady: ((ByteArray) -> Unit)? = null) {
-        speechController.flush(qiContext, onPcmReady)
+    suspend fun flush(qiContext: Any?, onPcmReady: ((ByteArray) -> Unit)? = null) {
+        suspendCancellableCoroutine { continuation ->
+            speechController.flush(
+                qiContextAny = qiContext,
+                onPcmReady = onPcmReady,
+                onComplete = {
+                    if (continuation.isActive) {
+                        continuation.resume(Unit)
+                    }
+                }
+            )
+        }
     }
 
     fun stop() {
@@ -21,4 +33,5 @@ class SpeechManager(context: Context) {
     fun destroy() {
         speechController.destroy()
     }
+
 }
