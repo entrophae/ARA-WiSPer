@@ -2,7 +2,6 @@ package de.rub.hcd.entrophae.ara_wisper.server.routes
 
 import android.util.Log
 import ch.fhnw.pepper_realtime.R
-import ch.fhnw.pepper_realtime.tools.ToolContext
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appString
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import de.rub.hcd.entrophae.ara_wisper.server.manager.DashboardManager

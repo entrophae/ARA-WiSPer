@@ -119,7 +119,6 @@ class ProxyPipelineManager(
             systemPrompt = systemPrompt,
             toolsArray = tools,
             apiSupportsTools = toolsSupported,
-            toolInterceptor = toolInterceptor,
             checkCancelled = { isResponseCancelled },
             sendPacket = sendToApp
         )
