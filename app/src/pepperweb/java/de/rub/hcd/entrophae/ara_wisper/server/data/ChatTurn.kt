@@ -2,6 +2,7 @@ package de.rub.hcd.entrophae.ara_wisper.server.data
 
 import android.util.Log
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
+import java.io.ByteArrayOutputStream
 
 /**
  * Temporarily saves turns of conversation to keep track of the current state before saving in a database.
@@ -16,24 +17,70 @@ data class ChatTurn(
     val userId: String,
     val turnId: String,
     var userQuery: String = "",
+    var userImageUrl: String? = null,
     var llmResponse: String = "",
+    var toolsUsed: MutableList<ToolCallRecord> = mutableListOf(),
     var toolCalled: String? = null,
     var toolBufferResponse: String? = null,
-    var audioBuffer: ByteArrayOutputStream = ByteArrayOutputStream()
-)
-
-fun createTurn(userId: String, turnId: String, userQuery: String, currentTurn: ChatTurn?): ChatTurn {
-    if (currentTurn == null || currentTurn.turnId != turnId) {
-        val turn = ChatTurn(
-            userId = userId,
-            turnId = turnId,
-            userQuery = userQuery
-        )
-        logTurnState("Initialized", turn)
-        return turn
+    var audioBuffer: ByteArrayOutputStream = ByteArrayOutputStream(),
+    var isSystemEvent: Boolean = false
+) {
+    fun addToolCall(toolCallId: String, toolName: String, query: String) {
+        this.toolsUsed.add(ToolCallRecord(callId = toolCallId, name = toolName, query = query))
     }
-    return currentTurn
+
+    fun addToolAnswer(toolCallId: String? = null, answer: String) {
+        val record = toolCallId?.takeIf { it.isNotBlank() }?.let { id ->
+            toolsUsed.find { it.callId == id }
+        } ?: toolsUsed.lastOrNull()
+
+        record?.answer = answer
+    }
+
+    fun appendLlmText(llmText: String) {
+        /*
+        if (isThinkingText) {
+            val currentBuffer = this.toolBufferResponse ?: ""
+            val separator = if (currentBuffer.isNotEmpty() && !currentBuffer.endsWith("\n")) "\n\n" else ""
+            this.toolBufferResponse = currentBuffer + separator + llmText
+
+            Log.i(ProxySettingsRepository.TAG, "thought Added for Tool ${this.toolCalled}")
+        } else {
+            this.llmResponse += llmText
+        }
+         */
+        this.llmResponse += llmText
+        logTurnState("LLM Text Appended", this)
+    }
+
+    companion object {
+        fun resolve(
+            currentTurn: ChatTurn?,
+            userId: String,
+            turnId: String,
+            text: String,
+            isSystem: Boolean = false
+        ): ChatTurn {
+            if (currentTurn != null && currentTurn.turnId == turnId) {
+                return currentTurn
+            }
+
+            return ChatTurn(
+                userId = userId,
+                turnId = turnId,
+                userQuery = text,
+                isSystemEvent = isSystem
+            )
+        }
+    }
 }
+
+data class ToolCallRecord(
+    val callId: String,
+    val name: String,
+    val query: String,
+    var answer: String = ""
+)
 
 fun logTurnState(reason: String, turn: ChatTurn?) {
     turn?.let {

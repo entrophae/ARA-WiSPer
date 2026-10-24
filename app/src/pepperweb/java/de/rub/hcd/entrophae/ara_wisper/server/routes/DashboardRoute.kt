@@ -19,10 +19,10 @@ import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appString
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings
 import de.rub.hcd.entrophae.ara_wisper.server.data.ChatTurn
+import de.rub.hcd.entrophae.ara_wisper.server.data.ToolCallRecord
 import de.rub.hcd.entrophae.ara_wisper.server.manager.DashboardManager
 import de.rub.hcd.entrophae.ara_wisper.server.network.DataBaseClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.WebSocketPayloads
-import de.rub.hcd.entrophae.ara_wisper.server.network.authBearer
 import io.ktor.http.ContentType
 import io.ktor.server.application.call
 import io.ktor.server.response.respondText
@@ -33,16 +33,11 @@ import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import kotlinx.coroutines.launch
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import androidx.core.graphics.createBitmap
-import java.io.ByteArrayOutputStream
-import kotlin.math.ceil
-
-val probeText = "ARAW1SP3R"
+import de.rub.hcd.entrophae.ara_wisper.server.network.LlmClient
+import de.rub.hcd.entrophae.ara_wisper.server.network.RagClient
+import de.rub.hcd.entrophae.ara_wisper.server.network.SttClient
 
 fun Route.dashboardRouting(viewModel: ChatViewModel) {
 
@@ -86,35 +81,18 @@ fun Route.dashboardRouting(viewModel: ChatViewModel) {
         val type = call.request.queryParameters["type"]
 
         val endpoint = when (type) {
-            Settings.VLM_MODEL -> ProxySettingsRepository.customVlmEndpoint
-            Settings.EMBEDDING_MODEL -> ProxySettingsRepository.customEmbeddingEndpoint
+            Settings.VLM_CONFIG -> ProxySettingsRepository.customVlmEndpoint
+            Settings.EMBEDDING_CONFIG -> ProxySettingsRepository.customEmbeddingEndpoint
             else -> ProxySettingsRepository.customLlmEndpoint
         }
         val apiKey = when (type) {
-            Settings.VLM_MODEL -> ProxySettingsRepository.customVlmKey
-            Settings.EMBEDDING_MODEL -> ProxySettingsRepository.customEmbeddingKey
+            Settings.VLM_CONFIG -> ProxySettingsRepository.customVlmKey
+            Settings.EMBEDDING_CONFIG -> ProxySettingsRepository.customEmbeddingKey
             else -> ProxySettingsRepository.customLlmKey
         }
 
-        val targetUrl = "$endpoint/models"
-
-        if (endpoint.isEmpty() || apiKey.isEmpty()) {
-            call.respondText("""{"error": "Missing Endpoint/apiKey"}""", ContentType.Application.Json)
-            Log.e("AraWisper", "Custom API Request Failed")
-            return@get
-        }
-
-        val request = Request.Builder().url(targetUrl).authBearer(apiKey).get().build()
-
-        try {
-            val client = HttpClientManager.getInstance().getQuickApiClient()
-            client.newCall(request).execute().use { response ->
-                val body = response.body?.string() ?: "[]"
-                call.respondText(body, ContentType.Application.Json)
-            }
-        } catch (e: Exception) {
-            call.respondText("""{"error": "${e.message}"}""", ContentType.Application.Json)
-        }
+        val result = LlmClient.getAvailableModels(endpoint, apiKey)
+        call.respondText(result, ContentType.Application.Json)
     }
 
     get(ProxySettingsRepository.Routes.PROXY_PROBE) {
@@ -123,119 +101,76 @@ fun Route.dashboardRouting(viewModel: ChatViewModel) {
         val fieldId = call.request.queryParameters["fieldId"] ?: ""
 
         val endpoint = when (fieldId) {
-            Settings.VLM_MODEL -> ProxySettingsRepository.customVlmEndpoint
-            Settings.EMBEDDING_MODEL -> ProxySettingsRepository.customEmbeddingEndpoint
+            Settings.VLM_CONFIG -> ProxySettingsRepository.customVlmEndpoint
+            Settings.EMBEDDING_CONFIG -> ProxySettingsRepository.customEmbeddingEndpoint
             else -> ProxySettingsRepository.customLlmEndpoint
         }
         val apiKey = when (fieldId) {
-            Settings.VLM_MODEL -> ProxySettingsRepository.customVlmKey
-            Settings.EMBEDDING_MODEL -> ProxySettingsRepository.customEmbeddingKey
+            Settings.VLM_CONFIG -> ProxySettingsRepository.customVlmKey
+            Settings.EMBEDDING_CONFIG -> ProxySettingsRepository.customEmbeddingKey
             else -> ProxySettingsRepository.customLlmKey
         }
 
-        if (endpoint.isBlank() || apiKey.isBlank()) {
-            call.respondText("""{"supported": false, "response": "endpoint empty"}""", ContentType.Application.Json)
-            return@get
+        val (isSupported, responseText) = LlmClient.probeModelCapability(
+            modelId, probeType, endpoint, apiKey
+        )
+        val resultJson = JSONObject().apply {
+            put("supported", isSupported)
+            put("response", responseText)
         }
+        call.respondText(resultJson.toString(), ContentType.Application.Json)
+    }
 
-        val targetUrl = if (probeType == "embed") "$endpoint/embeddings" else "$endpoint/chat/completions"
-
-        val requestBodyJson = JSONObject().apply {
-            put("model", modelId)
-            when (probeType) {
-                "vision" -> {
-                    put("messages", JSONArray().put(JSONObject().apply {
-                        put("role", "user")
-                        put("content", JSONArray().put(JSONObject().apply {
-                            put("type", "text")
-                            put("text", "Read the nine characters in the image. Reply with only those nine characters")
-                        }).put(JSONObject().apply {
-                            put("type", "image_url")
-                            put(
-                                "image_url",
-                                JSONObject().put(
-                                    "url",
-                                    createVisionProbeImage(probeText)
-                                )
-                            )
-                        }))
-                    }))
-                }
-                "embed" -> {
-                    put("input", "test")
-                }
-                "tools" -> {
-                    put("messages", JSONArray().put(JSONObject().apply {
-                        put("role", "user")
-                        put("content", "ping")
-                    }))
-                    put("tools", "tools-not-array")
-                }
-            }
-        }
-
-        val reqBody = requestBodyJson.toString().toRequestBody("application/json".toMediaType())
-        val request = Request.Builder().url(targetUrl).authBearer(apiKey).post(reqBody).build()
-
+    get(ProxySettingsRepository.Routes.STATUS_DB) {
         try {
-            val client = HttpClientManager.getInstance().getQuickApiClient()
-            client.newCall(request).execute().use { response ->
-                var errorString: String? = ""
-                val responseBodyStr = response.body?.string() ?: ""
-                if (response.code == 404 || response.code == 405) {
-                    val resultJson = JSONObject().apply {
-                        put("supported", false)
-                        put("response", responseBodyStr)
-                    }
-                    call.respondText(resultJson.toString(), ContentType.Application.Json)
-                    return@get
-                }
-                val isSupported = when (probeType) {
-                    "tools" ->
-                        response.code == 400 && (responseBodyStr.lowercase().contains("tools") || responseBodyStr.lowercase().contains("param"))
-                    "vision" ->
-                        if (!response.isSuccessful) {
-                            false
-                        } else {
-                            try {
-                                val answer = JSONObject(responseBodyStr)
-                                    .getJSONArray("choices")
-                                    .getJSONObject(0)
-                                    .getJSONObject("message")
-                                    .optString("content")
-                                    .trim()
-
-                                answer.length == probeText.length &&
-                                    answer.zip(probeText).count { (a, b) ->
-                                        a.uppercaseChar() != b.uppercaseChar()
-                                    } <= ceil((probeText.length / 2).toDouble())
-                            } catch (e: Exception) {
-                                errorString = e.message;
-                                false
-                            }
-                        }
-                    "embed" -> response.isSuccessful && !responseBodyStr.contains("\"error\"")
-                    else -> response.isSuccessful
-                }
-                val resultJson = JSONObject().apply {
-                    put("supported", isSupported)
-                    put("response", responseBodyStr)
-                    if (errorString?.isNotBlank() == true) {
-                        put("error", errorString)
-                    }
-                }
-                call.respondText(resultJson.toString(), ContentType.Application.Json)
+            val result = DataBaseClient.fetchStatus()
+            if (result.contains(""""status":"error"""")) {
+                call.respondText(result, ContentType.Application.Json, io.ktor.http.HttpStatusCode.ServiceUnavailable)
+            } else {
+                call.respondText(result, ContentType.Application.Json)
             }
         } catch (e: Exception) {
-            val resultJson = JSONObject().apply {
-                put("supported", false)
-                put("error", e.message)
-            }
-            call.respondText(resultJson.toString(), ContentType.Application.Json)
+            call.respondText(
+                """{"status": "offline", "error": "${e.message}"}""",
+                ContentType.Application.Json,
+                io.ktor.http.HttpStatusCode.ServiceUnavailable
+            )
         }
     }
 
+    get(ProxySettingsRepository.Routes.STATUS_RAG) {
+        try {
+            val result = RagClient.fetchStatus()
+            if (result.contains(""""status":"error"""")) {
+                call.respondText(result, ContentType.Application.Json, io.ktor.http.HttpStatusCode.ServiceUnavailable)
+            } else {
+                call.respondText(result, ContentType.Application.Json)
+            }
+        } catch (e: Exception) {
+            call.respondText(
+                """{"status": "offline", "error": "${e.message}"}""",
+                ContentType.Application.Json,
+                io.ktor.http.HttpStatusCode.ServiceUnavailable
+            )
+        }
+    }
 
+    get(ProxySettingsRepository.Routes.STATUS_STT) {
+        try {
+            val result = SttClient.fetchStatus()
+            if (result.contains(""""status":"error"""")) {
+                call.respondText(result, ContentType.Application.Json, io.ktor.http.HttpStatusCode.ServiceUnavailable)
+            } else {
+                call.respondText(result, ContentType.Application.Json)
+            }
+        } catch (e: Exception) {
+            call.respondText(
+                """{"status": "offline", "error": "${e.message}"}""",
+                ContentType.Application.Json,
+                io.ktor.http.HttpStatusCode.ServiceUnavailable
+            )
+        }
+    }
 }
 
 private suspend fun DefaultWebSocketServerSession.sendInitialApiKeys() {
@@ -245,9 +180,9 @@ private suspend fun DefaultWebSocketServerSession.sendInitialApiKeys() {
         }
     }
     val schemaObj = JSONObject().apply {
-        // put("providers", ApiDataTemplate.Providers.toUiSchema()) // Not used cause we use custom llms here
-        put("proxy", ApiDataTemplate.Proxy.toUiSchema())
+        put("models", ApiDataTemplate.Models.toUiSchema())
         put("database", ApiDataTemplate.Database.toUiSchema())
+        put("speech",ApiDataTemplate.Speech.toUiSchema())
         put("tools", ApiDataTemplate.Tools.toUiSchema())
         put("system", ApiDataTemplate.System.toUiSchema())
     }
@@ -284,7 +219,7 @@ private suspend fun DefaultWebSocketServerSession.handleDashboardCommand(rawJson
         val type = json.optString(ProxySettingsRepository.Proxy.Keys.TYPE)
         when (type) {
             ProxySettingsRepository.Dashboard.Events.SAVE_API_KEYS -> {
-                processSaveKeys(json.getJSONObject("data"), viewModel)
+                processSaveKeys(json, viewModel)
             }
             ProxySettingsRepository.Dashboard.Events.CHAT_COMMAND -> {
                 processChatCommand(json, viewModel)
@@ -314,15 +249,29 @@ private fun processChatCommand(json: JSONObject, viewModel: ChatViewModel) {
     val apiMode = json.optString("apiMode")
     val text = json.optString("text")
 
+    val taggedText = "\u200B$text"
+
     if (apiMode == ProxySettingsRepository.Modes.ROUTING.CUSTOM) {
         val userMsg = ChatMessage(text, ChatMessage.Sender.USER)
         viewModel.addMessage(userMsg)
 
-        viewModel.sendMessageToRealtimeAPI(text, requestResponse = true, allowInterrupt = false)
+        viewModel.sendMessageToRealtimeAPI(taggedText, requestResponse = true, allowInterrupt = false)
     } else {
-        viewModel.sendMessageToRealtimeAPI(text, requestResponse = true, allowInterrupt = true)
+        viewModel.sendMessageToRealtimeAPI(taggedText, requestResponse = true, allowInterrupt = true)
     }
 }
+private fun processToggleMute(json: JSONObject) {
+    val activity = AraWisperManager.currentChatActivity
+    val adapter = activity?.let { ChatActivityAdapter(it) }
+
+    val userWantsMicOn = json.optBoolean("data", false)
+    AraWisperManager.appPrefs.edit {
+        putBoolean(Settings.MIC_STATUS, userWantsMicOn)
+    }
+
+    adapter?.toggleMicrophone()
+}
+
 private suspend fun processSetUser(json: JSONObject, viewModel: ChatViewModel) {
     val newUserId = json.optString("userId", "default_user")
     ProxySettingsRepository.activeUserId = newUserId
@@ -375,13 +324,30 @@ private suspend fun processUpdateUserKnowledge(json: JSONObject, viewModel: Chat
     if (updatedTurns != null) {
         for (i in 0 until updatedTurns.length()) {
             val turnObj = updatedTurns.getJSONObject(i)
+            val toolsUsedList = mutableListOf<ToolCallRecord>()
+            val toolsArray = turnObj.optJSONArray("toolsUsed")
+            if (toolsArray != null) {
+                for (j in 0 until toolsArray.length()) {
+                    val tObj = toolsArray.getJSONObject(j)
+                    toolsUsedList.add(
+                        ToolCallRecord(
+                            callId = tObj.optString("callId", ""),
+                            name = tObj.optString("name", ""),
+                            query = tObj.optString("query", ""),
+                            answer = tObj.optString("answer", "")
+                        )
+                    )
+                }
+            }
             val turn = ChatTurn(
                 userId = userId,
                 turnId = turnObj.optString("turnId"),
                 userQuery = turnObj.optString("userQuery"),
+                userImageUrl = if (turnObj.isNull("userImageUrl")) null else turnObj.optString("userImageUrl"),
                 llmResponse = turnObj.optString("llmResponse"),
                 toolCalled = if (turnObj.isNull("toolCalled")) null else turnObj.optString("toolCalled"),
-                toolBufferResponse = if (turnObj.isNull("toolBufferResponse")) null else turnObj.optString("toolBufferResponse")
+                toolBufferResponse = if (turnObj.isNull("toolBufferResponse")) null else turnObj.optString("toolBufferResponse"),
+                toolsUsed = toolsUsedList
             )
             DataBaseClient.updateHistory(turn)
         }
@@ -409,37 +375,3 @@ private suspend fun DefaultWebSocketServerSession.sendJsonToClient(payload: JSON
         Log.w("AraWisper", "Failed to send data to dashboard", e)
     }
 }
-
-private fun createVisionProbeImage(text: String): String {
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.BLACK
-        textSize = 50F
-        typeface = Typeface.DEFAULT_BOLD
-        textAlign = Paint.Align.LEFT
-    }
-    val bounds = android.graphics.Rect()
-    paint.getTextBounds(text, 0, text.length, bounds)
-
-    val paddingX = 60
-    val paddingY = 40
-    val width = bounds.width() + paddingX
-    val height = bounds.height() + paddingY
-
-    val bitmap = createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-
-    canvas.drawColor(Color.WHITE)
-
-    val x = (paddingX / 2f) - bounds.left
-    val y = (height / 2f) + (bounds.height() / 2f) - bounds.bottom
-
-    canvas.drawText(text, x, y, paint)
-
-    val outputStream = ByteArrayOutputStream()
-    bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
-    bitmap.recycle()
-
-    val base64 = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
-    return "data:image/png;base64,$base64"
-}
-

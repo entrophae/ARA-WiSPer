@@ -60,6 +60,12 @@ fun Route.constantsRouting(viewModel: ChatViewModel) {
             // Routes
             "ROUTE_${ProxySettingsRepository.Routes.WS.trim('/').replace('/', '_').uppercase()}" to ProxySettingsRepository.Routes.WS,
 
+            "ROUTE_${ProxySettingsRepository.Routes.STATUS_RAG.trim('/').replace('/', '_').uppercase()}" to ProxySettingsRepository.Routes.STATUS_RAG,
+
+            "ROUTE_${ProxySettingsRepository.Routes.STATUS_DB.trim('/').replace('/', '_').uppercase()}" to ProxySettingsRepository.Routes.STATUS_DB,
+
+            "ROUTE_${ProxySettingsRepository.Routes.STATUS_STT.trim('/').replace('/', '_').uppercase()}" to ProxySettingsRepository.Routes.STATUS_STT,
+
             "ROUTE_${ProxySettingsRepository.Routes.RAG_USERS.trim('/').replace('/', '_').uppercase()}" to ProxySettingsRepository.Routes.RAG_USERS,
         )
 

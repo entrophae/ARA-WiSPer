@@ -54,8 +54,20 @@ object ApiDataTemplate {
     }
 
     object Azure : SettingGroup() {
-        val AZURE_SPEECH_KEY = SettingKey(ProxySettingsRepository.Settings.AZURE_SPEECH_KEY, R.string.label_azure_speech_key, "password")
-        val AZURE_SPEECH_REGION = SettingKey(ProxySettingsRepository.Settings.AZURE_SPEECH_REGION, R.string.label_azure_speech_region, "text", default = "switzerlandnorth")
+        val AZURE_SPEECH_KEY = SettingKey(ProxySettingsRepository.Settings.AZURE_SPEECH_KEY, labelRes = R.string.label_azure_speech_key, type = "password")
+        val AZURE_SPEECH_REGION = SettingKey(ProxySettingsRepository.Settings.AZURE_SPEECH_REGION, labelRes = R.string.label_azure_speech_region, type = "text", default = "switzerlandnorth")
+    }
+
+    object Models : SettingGroup() {
+        val LLM = SettingKey(ProxySettingsRepository.Settings.LLM_ENDPOINT, labelRes = R.string.label_llm_endpoint, type = "url", placeholderRes = R.string.placeholder_custom_endpoint)
+        val LLM_KEY = SettingKey(ProxySettingsRepository.Settings.LLM_KEY, labelRes = R.string.label_llm_key, type = "password")
+        val LLM_CONFIG = SettingKey(ProxySettingsRepository.Settings.LLM_CONFIG, labelRes = R.string.label_llm_model, type = "model_select", placeholderRes = R.string.placeholder_custom_model)
+        val VLM = SettingKey(ProxySettingsRepository.Settings.VLM_ENDPOINT, labelRes = R.string.label_vlm_endpoint, type = "url", placeholderRes = R.string.placeholder_custom_endpoint)
+        val VLM_KEY = SettingKey(ProxySettingsRepository.Settings.VLM_KEY, labelRes = R.string.label_vlm_key, type = "password")
+        val VLM_CONFIG = SettingKey(ProxySettingsRepository.Settings.VLM_CONFIG, labelRes = R.string.label_vlm_model, type = "model_select", placeholderRes = R.string.placeholder_custom_model)
+        val EMBEDDING = SettingKey(ProxySettingsRepository.Settings.EMBEDDING_ENDPOINT, labelRes = R.string.label_embedding_endpoint, type = "url", placeholderRes = R.string.placeholder_custom_endpoint)
+        val EMBEDDING_KEY = SettingKey(ProxySettingsRepository.Settings.EMBEDDING_KEY, labelRes = R.string.label_embedding_key, type = "password")
+        val EMBEDDING_CONFIG = SettingKey(ProxySettingsRepository.Settings.EMBEDDING_CONFIG, labelRes = R.string.label_embedding_model, type = "model_select", placeholderRes = R.string.placeholder_custom_model)
     }
 
     object Proxy : SettingGroup() {

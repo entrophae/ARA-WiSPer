@@ -4,6 +4,7 @@ import android.util.Log
 import ch.fhnw.pepper_realtime.network.HttpClientManager
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import de.rub.hcd.entrophae.ara_wisper.server.data.ChatTurn
+import de.rub.hcd.entrophae.ara_wisper.server.data.ToolCallRecord
 import de.rub.hcd.entrophae.ara_wisper.server.data.UserKnowledge
 import de.rub.hcd.entrophae.ara_wisper.server.manager.DashboardManager
 import kotlinx.coroutines.Dispatchers
@@ -13,9 +14,34 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URLEncoder
 
 object DataBaseClient {
     private val client = HttpClientManager.getInstance().getQuickApiClient()
+
+
+    suspend fun fetchStatus() = withContext(Dispatchers.IO) {
+        val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
+        val apiKey = ProxySettingsRepository.databasePersonKey
+        val targetUrl = "$endpoint/api/status"
+
+        try {
+            val request = Request.Builder()
+                .url(targetUrl)
+                .authToken(apiKey)
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                Log.i("DB HEALTH", response.toString())
+                if (response.isSuccessful && response.body != null) {
+                    return@withContext  response.body!!.string()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(ProxySettingsRepository.TAG, "RAG Status Error: ${e.message}")
+        }
+        return@withContext """{"status":"error"}"""
+    }
 
     /**
      * Initializes a user in the database if they don't exist yet.
@@ -53,7 +79,7 @@ object DataBaseClient {
     suspend fun deleteUser(userId: String) = withContext(Dispatchers.IO) {
         val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
         val apiKey = ProxySettingsRepository.databasePersonKey
-        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS}?userId=$userId"
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS}/$userId"
 
         try {
             val request = Request.Builder().url(targetUrl).authToken(apiKey).delete().build()
@@ -85,16 +111,33 @@ object DataBaseClient {
     suspend fun updateHistory(turn: ChatTurn) = withContext(Dispatchers.IO) {
         val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
         val apiKey = ProxySettingsRepository.databasePersonKey
-        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS_TURN}"
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS}/${turn.userId}/history/turns"
 
         try {
+            val toolsJsonArray =
+                if (turn.toolsUsed.isEmpty()) JSONObject.NULL
+                else {
+                    JSONArray().apply {
+                        for (record in turn.toolsUsed) {
+                            put(JSONObject().apply {
+                                put("callId", record.callId)
+                                put("name", record.name)
+                                put("query", record.query)
+                                put("answer", record.answer)
+                            })
+                        }
+                    }
+                }
+
             val jsonBody = JSONObject().apply {
                 put("userId", turn.userId)
                 put("turnId", turn.turnId)
                 put("userQuery", turn.userQuery)
                 put("llmResponse", turn.llmResponse)
+                put("userImageUrl", turn.userImageUrl ?: JSONObject.NULL)
                 put("toolCalled", turn.toolCalled ?: JSONObject.NULL)
                 put("toolBufferResponse", turn.toolBufferResponse ?: JSONObject.NULL)
+                put("toolsUsed", toolsJsonArray)
             }.toString().toRequestBody("application/json".toMediaType())
 
             val request = Request.Builder().url(targetUrl).authToken(apiKey).post(jsonBody).build()
@@ -118,7 +161,7 @@ object DataBaseClient {
     suspend fun deleteTurn(userId: String, turnId: String) = withContext(Dispatchers.IO) {
         val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
         val apiKey = ProxySettingsRepository.databasePersonKey
-        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS_TURN}?userId=$userId&turnId=$turnId"
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS}/$userId/history/turns/$turnId"
 
         try {
 
@@ -145,7 +188,7 @@ object DataBaseClient {
     suspend fun deleteHistory(userId: String) = withContext(Dispatchers.IO) {
         val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
         val apiKey = ProxySettingsRepository.databasePersonKey
-        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS_HISTORY}?userId=$userId"
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS}/$userId/history"
 
         try {
 
@@ -173,11 +216,10 @@ object DataBaseClient {
     suspend fun updateSummary(userId: String, newSummary: String) = withContext(Dispatchers.IO) {
         val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
         val apiKey = ProxySettingsRepository.databasePersonKey
-        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS_SUMMARY}"
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS}/$userId/summary"
 
         try {
             val jsonBody = JSONObject().apply {
-                put("userId", userId)
                 put("summary", newSummary)
             }.toString().toRequestBody("application/json".toMediaType())
 
@@ -202,7 +244,7 @@ object DataBaseClient {
     suspend fun deleteSummary(userId: String) = withContext(Dispatchers.IO) {
         val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
         val apiKey = ProxySettingsRepository.databasePersonKey
-        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS_SUMMARY}?userId=$userId"
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS}/$userId/summary"
 
         try {
             val request = Request.Builder().url(targetUrl).authToken(apiKey).delete().build()
@@ -228,7 +270,7 @@ object DataBaseClient {
     suspend fun getUserKnowledge(userId: String): UserKnowledge = withContext(Dispatchers.IO) {
         val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
         val apiKey = ProxySettingsRepository.databasePersonKey
-        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS_KNOWLEDGE}/$userId"
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS}/$userId"
 
         val turnList = mutableListOf<ChatTurn>()
         var summary = ""
@@ -247,14 +289,39 @@ object DataBaseClient {
                     val historyArray = jsonResponse.optJSONArray("history") ?: JSONArray()
                     for (i in 0 until historyArray.length()) {
                         val obj = historyArray.getJSONObject(i)
+
+                        val rawToolsStr = obj.optString("toolsUsed")
+                        val toolsUsedList = mutableListOf<ToolCallRecord>()
+
+                        if (rawToolsStr.isNotBlank() && rawToolsStr != "null") {
+                            try {
+                                val toolsArray = JSONArray(rawToolsStr)
+                                for (j in 0 until toolsArray.length()) {
+                                    val tObj = toolsArray.getJSONObject(j)
+                                    toolsUsedList.add(
+                                        ToolCallRecord(
+                                            callId = tObj.optString("callId", ""),
+                                            name = tObj.optString("name", ""),
+                                            query = tObj.optString("query", ""),
+                                            answer = tObj.optString("answer", "")
+                                        )
+                                    )
+                                }
+                            } catch (e: Exception) {
+                                Log.e(ProxySettingsRepository.TAG, "Failed to parse toolsUsed for turn: ${e.message}")
+                            }
+                        }
+
                         turnList.add(
                             ChatTurn(
                                 userId = obj.optString("userId"),
                                 turnId = obj.optString("turnId"),
                                 userQuery = obj.optString("userQuery"),
+                                userImageUrl = if (obj.isNull("userImageUrl")) null else obj.optString("userImageUrl"),
                                 llmResponse = obj.optString("llmResponse"),
                                 toolCalled = if (obj.isNull("toolCalled")) null else obj.optString("toolCalled"),
-                                toolBufferResponse = if (obj.isNull("toolBufferResponse")) null else obj.optString("toolBufferResponse")
+                                toolBufferResponse = if (obj.isNull("toolBufferResponse")) null else obj.optString("toolBufferResponse"),
+                                toolsUsed = toolsUsedList
                             )
                         )
                     }

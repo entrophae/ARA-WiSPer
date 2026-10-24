@@ -5,6 +5,10 @@ import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appPrefs
 object ProxySettingsRepository {
     const val PREFS_NAME = "PepperDialogPrefs"
     const val TAG = "AraWisper Proxy"
+    const val VISUAL_PROBE = "ARAW1SP3R"
+
+    const val KEY_ENABLED_TOOLS = "KEY_ENABLED_TOOLS"
+    const val KEY_KNOWN_TOOLS = "KEY_KNOWN_TOOLS"
 
     fun getPref(key: String, default: String = ""): String {
         return appPrefs.getString(key, default) ?: default
@@ -34,8 +38,10 @@ object ProxySettingsRepository {
     val customLlmKey: String
         get() = getPref(Settings.LLM_KEY, "")
 
-    val customLlmModel: String
-        get() = getPref(Settings.LLM_MODEL, "")
+    val customLlmModel: String get() = getModelConfig(Settings.LLM_CONFIG).optString("id", "")
+    val customLlmHasTools: Boolean get() = getModelConfig(Settings.LLM_CONFIG).optBoolean("hasTools", false)
+    val customLlmHasVisuals: Boolean get() = getModelConfig(Settings.LLM_CONFIG).optBoolean("hasVision", false)
+    val customLlmHasEmbedding: Boolean get() = getModelConfig(Settings.LLM_CONFIG).optBoolean("hasEmbedding", false)
 
     val customVlmEndpoint: String
         get() = getPref(Settings.VLM_ENDPOINT, "")
@@ -43,8 +49,10 @@ object ProxySettingsRepository {
     val customVlmKey: String
         get() = getPref(Settings.VLM_KEY, "")
 
-    val customVlmModel: String
-        get() = getPref(Settings.VLM_MODEL, "")
+    val customVlmModel: String get() = getModelConfig(Settings.VLM_CONFIG).optString("id", "")
+    val customVlmHasTools: Boolean get() = getModelConfig(Settings.VLM_CONFIG).optBoolean("hasTools", false)
+    val customVlmHasVisuals: Boolean get() = getModelConfig(Settings.VLM_CONFIG).optBoolean("hasVision", false)
+    val customVlmHasEmbedding: Boolean get() = getModelConfig(Settings.VLM_CONFIG).optBoolean("hasEmbedding", false)
 
     val customEmbeddingEndpoint: String
         get() = getPref(Settings.EMBEDDING_ENDPOINT, "")
@@ -52,8 +60,10 @@ object ProxySettingsRepository {
     val customEmbeddingKey: String
         get() = getPref(Settings.EMBEDDING_KEY, "")
 
-    val customEmbeddingModel: String
-        get() = getPref(Settings.EMBEDDING_MODEL, "")
+    val customEmbeddingModel: String get() = getModelConfig(Settings.EMBEDDING_CONFIG).optString("id", "")
+    val customEmbeddingHasTools: Boolean get() = getModelConfig(Settings.EMBEDDING_CONFIG).optBoolean("hasTools", false)
+    val customEmbeddingHasVisuals: Boolean get() = getModelConfig(Settings.EMBEDDING_CONFIG).optBoolean("hasVision", false)
+    val customEmbeddingHasEmbedding: Boolean get() = getModelConfig(Settings.EMBEDDING_CONFIG).optBoolean("hasEmbedding", false)
 
     val customSttEndpoint: String
         get() = getPref(Settings.STT_ENDPOINT, "")
@@ -94,6 +104,14 @@ object ProxySettingsRepository {
         const val PROXY = "/proxy"
         const val PROXY_MODELS = "$PROXY/models"
         const val PROXY_PROBE = "$PROXY/probe"
+
+        // Status Routes
+        const val STATUS = "/status"
+        const val STATUS_STT = "$STATUS/stt"
+        const val STATUS_RAG = "$STATUS/rag"
+        const val STATUS_DB = "$STATUS/db"
+
+        // Frontend Routes
         const val RAG = "/rag"
         const val RAG_USERS = "$RAG/users"
         const val RAG_USER_HISTORY = "$RAG_USERS/history"
@@ -126,13 +144,13 @@ object ProxySettingsRepository {
         const val SYSTEM_ROUTING_MODE = "SYSTEM_ROUTING_MODE"
         const val LLM_ENDPOINT = "CUSTOM_LLM_ENDPOINT"
         const val LLM_KEY = "CUSTOM_LLM_KEY"
-        const val LLM_MODEL = "CUSTOM_LLM_MODEL"
+        const val LLM_CONFIG = "CUSTOM_LLM_CONFIG"
         const val VLM_ENDPOINT = "CUSTOM_VLM_ENDPOINT"
         const val VLM_KEY = "CUSTOM_VLM_KEY"
-        const val VLM_MODEL = "CUSTOM_VLM_MODEL"
+        const val VLM_CONFIG = "CUSTOM_VLM_CONFIG"
         const val EMBEDDING_ENDPOINT = "CUSTOM_EMBEDDING_ENDPOINT"
         const val EMBEDDING_KEY = "CUSTOM_EMBEDDING_KEY"
-        const val EMBEDDING_MODEL = "CUSTOM_EMBEDDING_MODEL"
+        const val EMBEDDING_CONFIG = "CUSTOM_EMBEDDING_CONFIG"
         const val CUSTOM_VAD_MODEL = "CUSTOM_VAD_MODEL"
         const val STT_ENDPOINT = "CUSTOM_STT_ENDPOINT"
         const val STT_KEY = "CUSTOM_STT_KEY"

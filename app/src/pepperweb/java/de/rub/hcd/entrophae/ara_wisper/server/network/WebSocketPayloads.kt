@@ -149,4 +149,29 @@ object WebSocketPayloads {
             })
         }.toString()
     }
+
+    fun extractUserPayloads(json: JSONObject): Pair<String?, String?> {
+        val contentArr = json.optJSONObject(ProxySettingsRepository.Proxy.Keys.ITEM)
+            ?.optJSONArray(ProxySettingsRepository.Proxy.Keys.CONTENT)
+
+        if (contentArr == null || contentArr.length() == 0) return Pair(null, null)
+
+        var text: String? = null
+        var imageUrl: String? = null
+
+        for (i in 0 until contentArr.length()) {
+            val part = contentArr.getJSONObject(i)
+            val type = part.optString("type", "")
+
+            if (type == "input_text" || type == "text") {
+                text = part.optString(ProxySettingsRepository.Proxy.Keys.TEXT, "")
+            } else if (type == "input_image") {
+                imageUrl = part.optString("image_url")
+                if (imageUrl.isBlank()) {
+                    imageUrl = part.optJSONObject("image_url")?.optString("url", "")
+                }
+            }
+        }
+        return Pair(text, imageUrl)
+    }
 }

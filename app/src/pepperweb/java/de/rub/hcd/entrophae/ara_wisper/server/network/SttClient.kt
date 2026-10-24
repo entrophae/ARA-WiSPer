@@ -10,9 +10,36 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 object SttClient {
     private val client = HttpClientManager.getInstance().getApiClient()
+
+
+    suspend fun fetchStatus() = withContext(Dispatchers.IO) {
+        val apiEndpoint = ProxySettingsRepository.customSttEndpoint.replace("/api","")
+        val apiKey = ProxySettingsRepository.customSttKey
+        val targetUrl = "$apiEndpoint/status"
+
+        try {
+            val request = Request.Builder()
+                .url(targetUrl)
+                .authToken(apiKey)
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                Log.i("STT HEALTH", response.toString())
+                if (response.isSuccessful && response.body != null) {
+                    return@withContext  response.body!!.string()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(ProxySettingsRepository.TAG, "RAG Status Error: ${e.message}")
+        }
+        return@withContext """{"status":"error"}"""
+
+    }
 
     fun sendAudioChunk(audioDataToSend: String): String {
         val apiEndpoint = ProxySettingsRepository.customSttEndpoint

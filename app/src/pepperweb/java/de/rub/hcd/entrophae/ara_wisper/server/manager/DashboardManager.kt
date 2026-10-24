@@ -3,6 +3,7 @@ package de.rub.hcd.entrophae.ara_wisper.server.manager
 import android.util.Log
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import de.rub.hcd.entrophae.ara_wisper.server.network.DataBaseClient
+import de.rub.hcd.entrophae.ara_wisper.server.network.WebSocketPayloads
 import io.ktor.server.websocket.DefaultWebSocketServerSession
 import io.ktor.websocket.Frame
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -16,11 +17,34 @@ object DashboardManager {
     private val _events = MutableSharedFlow<JSONObject>(extraBufferCapacity = 100)
     val events = _events.asSharedFlow()
 
-    fun sendChat(isUser: Boolean, text: String) {
+    suspend fun broadcastPayload(payload: org.json.JSONObject) {
+        // Replace '_events' with whatever your private MutableSharedFlow is named!
+        _events.emit(payload)
+    }
+
+
+    fun updateChat(turnId: String, isUser: Boolean, text: String? = null, userImageUrl: String? = null) {
+        val message = JSONObject().apply {
+            put(ProxySettingsRepository.Logging.Keys.UUID, turnId)
+            put(ProxySettingsRepository.Logging.Keys.SENDER, if (isUser) "USER" else "ROBOT")
+            if (!text.isNullOrBlank()) {
+                put(ProxySettingsRepository.Logging.Keys.MSG, text)
+            }
+            if (!userImageUrl.isNullOrBlank()) {
+                put("userImageUrl", userImageUrl)
+            }
+        }
+        sendDashboardEvent(ProxySettingsRepository.Dashboard.Events.CHAT_UPDATE, JSONArray().put(message))
+    }
+
+    fun sendChat(isUser: Boolean, text: String, userImageUrl: String? = null) {
         val message = JSONObject().apply {
             put(ProxySettingsRepository.Logging.Keys.UUID, UUID.randomUUID().toString())
             put(ProxySettingsRepository.Logging.Keys.SENDER, if (isUser) "USER" else "ROBOT")
             put(ProxySettingsRepository.Logging.Keys.MSG, text)
+            if (!userImageUrl.isNullOrBlank()) {
+                put("userImageUrl", userImageUrl)
+            }
         }
         sendDashboardEvent(ProxySettingsRepository.Dashboard.Events.CHAT_UPDATE, JSONArray().put(message))
     }
@@ -64,12 +88,31 @@ object DashboardManager {
 
         val historyArray = JSONArray()
         for (turn in history) {
+            val toolsJsonArray =
+                if (turn.toolsUsed.isEmpty()) JSONObject.NULL
+                else {
+                    JSONArray().apply {
+                        for (record in turn.toolsUsed) {
+                            put(JSONObject().apply {
+                                put("callId", record.callId)
+                                put("name", record.name)
+                                put("query", record.query)
+                                put("answer", record.answer)
+                            })
+                        }
+                    }
+                }
+
             historyArray.put(JSONObject().apply {
                 put("turnId", turn.turnId)
                 put("userQuery", turn.userQuery)
                 put("llmResponse", turn.llmResponse)
+                if (!turn.userImageUrl.isNullOrBlank()) {
+                    put("userImageUrl", turn.userImageUrl)
+                }
                 put("toolCalled", turn.toolCalled)
                 put("toolBufferResponse", turn.toolBufferResponse)
+                put("toolsUsed", toolsJsonArray)
             })
         }
 
