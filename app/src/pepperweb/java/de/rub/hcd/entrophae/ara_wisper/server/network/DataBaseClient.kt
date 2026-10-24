@@ -380,4 +380,185 @@ object DataBaseClient {
         return@withContext userList
 
     }
+
+    suspend fun getExperiments(): JSONArray = withContext(Dispatchers.IO) {
+        val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
+        val apiKey = ProxySettingsRepository.databasePersonKey
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_EXPERIMENTS}"
+
+        try {
+            val request = Request.Builder().url(targetUrl).authToken(apiKey).get().build()
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful && response.body != null) {
+                    JSONArray(response.body!!.string())
+                } else {
+                    JSONArray()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(ProxySettingsRepository.TAG, "DB Fetch Error (Experiments): ${e.message}")
+            JSONArray()
+        }
+    }
+
+    suspend fun getExperimentIdForUser(userId: String): String = withContext(Dispatchers.IO) {
+        val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
+        val apiKey = ProxySettingsRepository.databasePersonKey
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_USERS}/$userId/experiments"
+
+        try {
+            val request = Request.Builder().url(targetUrl).authToken(apiKey).get().build()
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful && response.body != null) {
+                    val jsonArray = JSONArray(response.body!!.string())
+                    if (jsonArray.length() > 0) {
+                        return@withContext jsonArray.getString(0)
+                    }
+                } else {
+                    Log.e(ProxySettingsRepository.TAG, "DB: REST rejected user experiments - Code: ${response.code}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(ProxySettingsRepository.TAG, "DB Fetch Error (Experiment for User): ${e.message}")
+        }
+        return@withContext ""
+    }
+
+    suspend fun createExperiment(experimentId: String, name: String) = withContext(Dispatchers.IO) {
+        val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
+        val apiKey = ProxySettingsRepository.databasePersonKey
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_EXPERIMENTS}"
+
+        try {
+            val jsonBody = JSONObject().apply {
+                put("experimentId", experimentId)
+                put("name", name)
+            }.toString().toRequestBody("application/json".toMediaType())
+
+            val request = Request.Builder().url(targetUrl).authToken(apiKey).post(jsonBody).build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.e(ProxySettingsRepository.TAG, "DB: REST rejected create experiment - Code: ${response.code}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(ProxySettingsRepository.TAG, "DB Network Error (Create Experiment): ${e.message}")
+        }
+    }
+
+    suspend fun assignUserToExperiment(experimentId: String, userId: String) = withContext(Dispatchers.IO) {
+        val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
+        val apiKey = ProxySettingsRepository.databasePersonKey
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_EXPERIMENTS}/$experimentId/users"
+
+        try {
+            val jsonBody = JSONObject().put("userId", userId).toString().toRequestBody("application/json".toMediaType())
+            val request = Request.Builder().url(targetUrl).authToken(apiKey).post(jsonBody).build()
+            client.newCall(request).execute().close()
+        } catch (e: Exception) {
+            Log.e(ProxySettingsRepository.TAG, "DB Network Error (Assign User): ${e.message}")
+        }
+    }
+
+    suspend fun removeUserFromExperiment(experimentId: String, userId: String) = withContext(Dispatchers.IO) {
+        val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
+        val apiKey = ProxySettingsRepository.databasePersonKey
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_EXPERIMENTS}/$experimentId/users/$userId"
+
+        try {
+            val request = Request.Builder().url(targetUrl).authToken(apiKey).delete().build()
+            client.newCall(request).execute().close()
+        } catch (e: Exception) {
+            Log.e(ProxySettingsRepository.TAG, "DB Network Error (Remove User): ${e.message}")
+        }
+    }
+
+    suspend fun getExperimentFiles(experimentId: String): List<String> = withContext(Dispatchers.IO) {
+        val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
+        val apiKey = ProxySettingsRepository.databasePersonKey
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_EXPERIMENTS}/$experimentId/documents"
+        try {
+            val request = Request.Builder().url(targetUrl).authToken(apiKey).get().build()
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful && response.body != null) {
+                    val json = JSONObject(response.body!!.string())
+                    val arr = json.optJSONArray("files") ?: return@withContext emptyList()
+                    val list = mutableListOf<String>()
+                    for (i in 0 until arr.length()) list.add(arr.getString(i))
+                    return@withContext list
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(ProxySettingsRepository.TAG, "Error fetching files: ${e.message}")
+        }
+        return@withContext emptyList()
+    }
+
+    suspend fun getFileContent(experimentId: String, fileName: String): String = withContext(Dispatchers.IO) {
+        val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
+        val apiKey = ProxySettingsRepository.databasePersonKey
+        val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_EXPERIMENTS}/$experimentId/files/$encodedName/content"
+        Log.d(ProxySettingsRepository.TAG, "DB Request GET Content URL: $targetUrl")
+        try {
+            val request = Request.Builder().url(targetUrl).authToken(apiKey).get().build()
+            client.newCall(request).execute().use { response ->
+                Log.d(ProxySettingsRepository.TAG, "DB Response Code: ${response.code}")
+                if (response.isSuccessful && response.body != null) {
+                    val bodyStr = response.body!!.string()
+                    val json = JSONObject(bodyStr)
+                    return@withContext json.optString("content", "")
+                } else {
+                    Log.e(ProxySettingsRepository.TAG, "DB Error Response: ${response.body?.string()}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(ProxySettingsRepository.TAG, "Error fetching content: ${e.message}", e)
+        }
+        return@withContext "Error loading file content."
+    }
+
+    suspend fun deleteExperimentFile(experimentId: String, fileName: String): Boolean = withContext(Dispatchers.IO) {
+        val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
+        val apiKey = ProxySettingsRepository.databasePersonKey
+        val encodedName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_EXPERIMENTS}/$experimentId/files/$encodedName"
+        Log.d(ProxySettingsRepository.TAG, "DB Request DELETE URL: $targetUrl")
+        try {
+            val request = Request.Builder().url(targetUrl).authToken(apiKey).delete().build()
+            client.newCall(request).execute().use { response ->
+                Log.d(ProxySettingsRepository.TAG, "DB Delete Response Code: ${response.code}")
+                if (!response.isSuccessful) {
+                    Log.e(ProxySettingsRepository.TAG, "DB Delete Error Body: ${response.body?.string()}")
+                }
+                return@withContext response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.e(ProxySettingsRepository.TAG, "Error deleting file: ${e.message}", e)
+            return@withContext false
+        }
+    }
+
+    suspend fun deleteExperiment(experimentId: String): Boolean = withContext(Dispatchers.IO) {
+        val endpoint = ProxySettingsRepository.databasePersonApiEndpoint
+        val apiKey = ProxySettingsRepository.databasePersonKey
+        val targetUrl = "$endpoint${ProxySettingsRepository.Routes.DB_API_EXPERIMENTS}/$experimentId"
+        Log.d(ProxySettingsRepository.TAG, "DB Request DELETE URL: $targetUrl")
+        try {
+            val request = Request.Builder().url(targetUrl).authToken(apiKey).delete().build()
+            client.newCall(request).execute().use { response ->
+                Log.d(ProxySettingsRepository.TAG, "DB Delete Response Code: ${response.code}")
+                if (!response.isSuccessful) {
+                    Log.e(ProxySettingsRepository.TAG, "DB Delete Error Body: ${response.body?.string()}")
+                    Log.e(ProxySettingsRepository.TAG, "DB Delete Error Body: ${response.message}")
+                }
+                return@withContext response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.e(ProxySettingsRepository.TAG, "Error deleting file: ${e.message}", e)
+            return@withContext false
+        }
+    }
+
+
 }

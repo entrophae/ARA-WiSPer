@@ -67,6 +67,9 @@ fun Route.constantsRouting(viewModel: ChatViewModel) {
             "ROUTE_${ProxySettingsRepository.Routes.STATUS_STT.trim('/').replace('/', '_').uppercase()}" to ProxySettingsRepository.Routes.STATUS_STT,
 
             "ROUTE_${ProxySettingsRepository.Routes.RAG_USERS.trim('/').replace('/', '_').uppercase()}" to ProxySettingsRepository.Routes.RAG_USERS,
+
+            "ROUTE_${ProxySettingsRepository.Routes.RAG_EXPERIMENTS.trim('/').replace('/', '_').uppercase()}" to ProxySettingsRepository.Routes.RAG_EXPERIMENTS,
+
         )
 
         // Respond with the JSON object

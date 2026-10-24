@@ -3,6 +3,7 @@ package de.rub.hcd.entrophae.ara_wisper.manager
 import android.util.Log
 import ch.fhnw.pepper_realtime.tools.Tool
 import ch.fhnw.pepper_realtime.tools.ToolContext
+import de.rub.hcd.entrophae.ara_wisper.tools.KnowledgeDatabaseTool
 import org.json.JSONObject
 
 class AraWisperToolRegistry {
@@ -23,6 +24,7 @@ class AraWisperToolRegistry {
 
     private fun registerAllCustomTools() {
         // registerTool("custom_tool") { CustomTool() }
+        registerTool(KnowledgeDatabaseTool().getName()) { KnowledgeDatabaseTool() }
 
         Log.d(ProxySettingsRepository.TAG, "AraWisperToolRegistry initialized with ${toolFactories.size} tools.")
     }

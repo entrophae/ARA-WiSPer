@@ -35,6 +35,8 @@
     <string name="label_stt_key">STT Key</string>
     <string name="label_person_db_api">PERSON DB API</string>
     <string name="label_person_db_key">PERSON DB Key</string>
+    <string name="label_fact_db_api">FACT DB API</string>
+    <string name="label_fact_db_key">FACT DB Key</string>
 
     <string name="label_groq_key">Groq Key</string>
     <string name="label_tavily_key">Tavily Key</string>

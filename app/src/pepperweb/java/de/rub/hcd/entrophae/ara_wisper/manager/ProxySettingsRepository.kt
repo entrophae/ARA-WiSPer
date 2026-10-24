@@ -76,8 +76,14 @@ object ProxySettingsRepository {
 
     val databasePersonKey: String
         get() = getPref(Settings.PERSON_DB_KEY, "")
-        
-    val customSystemPrompt: String
+
+    val databaseFactApiEndpoint: String
+        get() = getPref(Settings.FACT_DB_API_ENDPOINT, "").removeSuffix("/")
+
+    val databaseFactKey: String
+        get() = getPref(Settings.FACT_DB_KEY, "")
+
+    var customSystemPrompt: String
         get() = getPref(Settings.SYSTEM_PROMPT, "")
 
     val defaultSystemPrompt: String
@@ -114,13 +120,19 @@ object ProxySettingsRepository {
         // Frontend Routes
         const val RAG = "/rag"
         const val RAG_USERS = "$RAG/users"
-        const val RAG_USER_HISTORY = "$RAG_USERS/history"
-        const val RAG_USER_SUMMARY = "$RAG_USERS/summary"
+        const val RAG_EXPERIMENTS = "$RAG/experiments"
+        const val RAG_EXPERIMENT_USERS = "$RAG/experiments/{id}/users"
+        const val RAG_EXPERIMENT_FILES = "$RAG/experiments/{id}/files"
+
+        // Backend Database API Routes
         const val DB_API_USERS = "/api/users"
-        const val DB_API_USERS_KNOWLEDGE = "/api/knowledge/users"
-        const val DB_API_USERS_HISTORY = "/api/knowledge/history"
-        const val DB_API_USERS_TURN = "/api/knowledge/history/turn"
-        const val DB_API_USERS_SUMMARY = "/api/knowledge/summary"
+        const val DB_API_USER_HISTORY_TURNS = "/api/users/history/turns"
+        const val DB_API_USERS_SUMMARY = "/api/users/summary"
+        const val DB_API_EXPERIMENTS = "/api/experiments"
+        const val DB_API_EXPERIMENTS_USERS = "/api/experiments/{id}/users"
+        const val DB_API_INGEST = "/ingest"
+        const val DB_API_SEARCH = "/search"
+
     }
 
     object Modes {
@@ -156,6 +168,8 @@ object ProxySettingsRepository {
         const val STT_KEY = "CUSTOM_STT_KEY"
         const val PERSON_DB_API_ENDPOINT = "PERSON_DB_API_ENDPOINT"
         const val PERSON_DB_KEY = "PERSON_DB_KEY"
+        const val FACT_DB_API_ENDPOINT = "FACT_DB_API_ENDPOINT"
+        const val FACT_DB_KEY = "FACT_DB_KEY"
 
         const val OPENAI_KEY = "OPENAI_API_KEY"
         const val AZURE_ENDPOINT = "AZURE_OPENAI_ENDPOINT"

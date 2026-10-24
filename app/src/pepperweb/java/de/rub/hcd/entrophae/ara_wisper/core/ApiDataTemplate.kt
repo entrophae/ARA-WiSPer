@@ -86,8 +86,10 @@ object ApiDataTemplate {
     }
 
     object Database : SettingGroup() {
-        val PERSON_ENDPOINT = SettingKey(ProxySettingsRepository.Settings.PERSON_DB_API_ENDPOINT, R.string.label_person_db_api, "url", R.string.placeholder_custom_endpoint)
-        val PERSON_KEY = SettingKey(ProxySettingsRepository.Settings.PERSON_DB_KEY, R.string.label_person_db_key, "password")
+        val PERSON_ENDPOINT = SettingKey(ProxySettingsRepository.Settings.PERSON_DB_API_ENDPOINT, labelRes = R.string.label_person_db_api, type = "url", placeholderRes = R.string.placeholder_custom_endpoint)
+        val PERSON_KEY = SettingKey(ProxySettingsRepository.Settings.PERSON_DB_KEY, labelRes = R.string.label_person_db_key, type = "password")
+        val FACT_ENDPOINT = SettingKey(ProxySettingsRepository.Settings.FACT_DB_API_ENDPOINT, labelRes = R.string.label_fact_db_api, type = "url", placeholderRes = R.string.placeholder_custom_endpoint)
+        val FACT_KEY = SettingKey(ProxySettingsRepository.Settings.FACT_DB_KEY, labelRes = R.string.label_fact_db_key, type = "password")
     }
 
     object Tools : SettingGroup() {
