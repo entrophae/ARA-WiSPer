@@ -32,7 +32,7 @@ class AraWisperServer(private val port: Int = 8080) {
     val serverJob = Job()
     val serverScope = CoroutineScope(Dispatchers.IO + serverJob)
 
-    private fun start(viewModel: ChatViewModel, toolContext: ToolContext?) {
+    private fun start(viewModel: ChatViewModel) {
         Log.d(ProxySettingsRepository.TAG, "Configuring Ktor Server...")
 
         server = embeddedServer(Netty, port = port) {
@@ -54,7 +54,7 @@ class AraWisperServer(private val port: Int = 8080) {
 
                 constantsRouting(viewModel)
                 dashboardRouting(viewModel)
-                proxyRouting(toolContext)
+                proxyRouting()
                 ragRouting()
 
                 // Dynamic routing for all files
@@ -88,10 +88,10 @@ class AraWisperServer(private val port: Int = 8080) {
         Log.d(ProxySettingsRepository.TAG, "web server stopped")
     }
 
-    fun startServer(viewModel: ChatViewModel, toolContext: ToolContext?) {
+    fun startServer(viewModel: ChatViewModel) {
         serverScope.launch {
             try {
-                start(viewModel, toolContext)
+                start(viewModel)
                 Log.d(ProxySettingsRepository.TAG, "web server started on port $port")
             } catch (e: Exception) {
                 Log.e(ProxySettingsRepository.TAG, "failed to start server: ${e.message}")

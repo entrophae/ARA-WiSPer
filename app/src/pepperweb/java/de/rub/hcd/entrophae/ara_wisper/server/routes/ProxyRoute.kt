@@ -16,16 +16,13 @@ import io.ktor.websocket.readText
 import kotlinx.coroutines.CoroutineScope
 import org.json.JSONObject
 
-fun Route.proxyRouting(
-    activeToolContext: ToolContext?
-) {
+fun Route.proxyRouting() {
     webSocket(ProxySettingsRepository.Routes.PROXY) {
         Log.i(appString(R.string.app_name), appString(R.string.proxy_connected))
 
-        val manager = ProxyPipelineManager(
-            serverScope = this,
-            activeToolContext
-        ) { sendToApp(it) }
+        val manager = ProxyPipelineManager( serverScope = this ) {
+            sendToApp(it)
+        }
 
         // Send initial connection handshake
         val handshake = WebSocketPayloads.sessionCreated()

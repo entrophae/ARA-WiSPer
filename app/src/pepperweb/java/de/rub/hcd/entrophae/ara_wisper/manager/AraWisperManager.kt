@@ -12,7 +12,10 @@ import ch.fhnw.pepper_realtime.ui.ChatViewModel
 import de.rub.hcd.entrophae.ara_wisper.server.AraWisperServer
 
 object AraWisperManager : Application.ActivityLifecycleCallbacks {
-    private var webServer: de.rub.hcd.entrophae.ara_wisper.server.AraWisperServer? = null
+    private var webServer: AraWisperServer? = null
+
+    var currentChatActivity: ChatActivity? = null
+        private set
 
     lateinit var app: Application
         private set
@@ -45,11 +48,11 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
         if (activity is ChatActivity) {
             val viewModel = ViewModelProvider(activity)[ChatViewModel::class.java]
-            val activeContext = activity.toolContext
 
-            webServer =
-                _root_ide_package_.de.rub.hcd.entrophae.ara_wisper.server.AraWisperServer(8080)
-            webServer?.startServer(viewModel, activeContext)
+            webServer?.stopServer()
+
+            webServer = AraWisperServer(8080)
+            webServer?.startServer(viewModel)
         }
     }
 

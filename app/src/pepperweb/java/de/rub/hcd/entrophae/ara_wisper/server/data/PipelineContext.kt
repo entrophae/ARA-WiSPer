@@ -10,7 +10,6 @@ data class PipelineContext(
     val toolsArray: JSONArray?,
     val apiSupportsTools: Boolean,
     val toolInterceptor: ToolInterceptor,
-    val activeToolContext: ToolContext?,
     val checkCancelled: () -> Boolean,
     val sendPacket: suspend (String) -> Unit
 )

@@ -24,7 +24,6 @@ import kotlinx.coroutines.async
 
 class ProxyPipelineManager(
     private val serverScope: CoroutineScope,
-    private val activeToolContext: ToolContext?,
     private val sendToApp: suspend (String) -> Unit
 ) {
     val toolInterceptor = ToolInterceptor()
@@ -121,7 +120,6 @@ class ProxyPipelineManager(
             toolsArray = tools,
             apiSupportsTools = toolsSupported,
             toolInterceptor = toolInterceptor,
-            activeToolContext = activeToolContext,
             checkCancelled = { isResponseCancelled },
             sendPacket = sendToApp
         )
@@ -236,7 +234,7 @@ class ProxyPipelineManager(
         logTurnState("Tool Called: $toolName", currentTurn)
 
         val arguments = JSONObject(toolArgs ?: "{}")
-        val localResult = pipelineContext.toolInterceptor.attemptExecution(toolName, arguments, pipelineContext.activeToolContext)
+        val localResult = pipelineContext.toolInterceptor.attemptExecution(toolName, arguments, AraWisperManager.currentChatActivity?.toolContext, currentContext)
 
         return if (localResult != null) {
             // Tool executed locally, update context and continue loop
@@ -351,7 +349,7 @@ class ProxyPipelineManager(
             }
         }
 
-        val qiContextAny = pipelineContext.activeToolContext?.qiContext
+        val qiContextAny = AraWisperManager.currentChatActivity?.toolContext?.qiContext
         AraWisperManager.speechManager.flush(qiContextAny) { pcmBytes ->
             val base64Audio = android.util.Base64.encodeToString(pcmBytes, android.util.Base64.NO_WRAP)
             serverScope.launch {
@@ -399,7 +397,7 @@ class ProxyPipelineManager(
             pipelineContext.sendPacket(WebSocketPayloads.transcriptDelta(pipelineContext.responseId, llmText))
 
             if (!isThinkingText) {
-                val qiContextAny = pipelineContext.activeToolContext?.qiContext
+                val qiContextAny = AraWisperManager.currentChatActivity?.toolContext?.qiContext
                 AraWisperManager.speechManager.processTextChunk(qiContextAny, llmText) { pcmBytes ->
                     val base64Audio = android.util.Base64.encodeToString(pcmBytes, android.util.Base64.NO_WRAP)
                     serverScope.launch {
