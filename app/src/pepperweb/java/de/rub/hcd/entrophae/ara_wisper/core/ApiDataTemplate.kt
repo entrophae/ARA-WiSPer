@@ -1,22 +1,33 @@
 package de.rub.hcd.entrophae.ara_wisper.core
 
+import android.content.Context
+import androidx.annotation.Keep
 import ch.fhnw.pepper_realtime.R
-import org.json.JSONArray
-import org.json.JSONObject
+import ch.fhnw.pepper_realtime.manager.ApiKeyManager
+import ch.fhnw.pepper_realtime.manager.SettingsRepository
+import ch.fhnw.pepper_realtime.network.RealtimeApiProvider
+import ch.fhnw.pepper_realtime.tools.ToolRegistry
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appString
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
-import androidx.annotation.Keep
+import org.json.JSONArray
+import org.json.JSONObject
 
 object ApiDataTemplate {
 
     @Keep
     data class SettingKey(
         val id: String,
+        val label: String = "",
         val labelRes: Int = 0,
         val type: String = "",
         val placeholderRes: Int = 0,
         val default: String = "",
-        val options: List<String>? = null
+        val options: List<String>? = null,
+        val min: Float = 0f,
+        val max: Float = 100f,
+        val step: Float = 1f,
+        val unit: String = "",
+        val description: String = ""
     )
 
     @Keep
@@ -33,12 +44,15 @@ object ApiDataTemplate {
             allKeys().forEach { setting ->
                 array.put(JSONObject().apply {
                     put("id", setting.id)
-                    if (setting.labelRes != 0) put("label", appString(setting.labelRes))
+                    put("label", if (setting.label.isNotBlank()) setting.label else if (setting.labelRes != 0) appString(setting.labelRes) else setting.id)
                     put("type", setting.type)
                     if (setting.placeholderRes != 0) put("placeholder", appString(setting.placeholderRes))
-                    if (setting.options != null) {
-                        put("options", JSONArray(setting.options))
-                    }
+                    if (setting.options != null) put("options", JSONArray(setting.options))
+                    put("min", setting.min)
+                    put("max", setting.max)
+                    put("step", setting.step)
+                    put("unit", setting.unit)
+                    if (setting.description.isNotBlank()) put("description", setting.description)
                 })
             }
             return array
@@ -46,11 +60,11 @@ object ApiDataTemplate {
     }
 
     object Providers : SettingGroup() {
-        val OPENAI_KEY = SettingKey(ProxySettingsRepository.Settings.OPENAI_KEY, R.string.label_openai_key, "password", R.string.placeholder_openai_key)
-        val AZURE_ENDPOINT = SettingKey(ProxySettingsRepository.Settings.AZURE_ENDPOINT, R.string.label_azure_endpoint, "url", R.string.placeholder_azure_endpoint)
-        val AZURE_KEY = SettingKey(ProxySettingsRepository.Settings.AZURE_KEY, R.string.label_azure_key, "password")
-        val XAI_KEY = SettingKey(ProxySettingsRepository.Settings.XAI_KEY, R.string.label_grok_key, "password", R.string.placeholder_grok_key)
-        val GOOGLE_KEY = SettingKey(ProxySettingsRepository.Settings.GOOGLE_KEY, R.string.label_gemini_key, "password", R.string.placeholder_gemini_key)
+        val OPENAI_KEY = SettingKey(ProxySettingsRepository.Settings.OPENAI_KEY, labelRes = R.string.label_openai_key, type = "password", placeholderRes = R.string.placeholder_openai_key)
+        val AZURE_ENDPOINT = SettingKey(ProxySettingsRepository.Settings.AZURE_ENDPOINT, labelRes = R.string.label_azure_endpoint, type = "url", placeholderRes = R.string.placeholder_azure_endpoint)
+        val AZURE_KEY = SettingKey(ProxySettingsRepository.Settings.AZURE_KEY, labelRes = R.string.label_azure_key, type = "password")
+        val XAI_KEY = SettingKey(ProxySettingsRepository.Settings.XAI_KEY, labelRes = R.string.label_grok_key, type = "password", placeholderRes = R.string.placeholder_grok_key)
+        val GOOGLE_KEY = SettingKey(ProxySettingsRepository.Settings.GOOGLE_KEY, labelRes = R.string.label_gemini_key, type = "password", placeholderRes = R.string.placeholder_gemini_key)
     }
 
     object Azure : SettingGroup() {
@@ -70,19 +84,10 @@ object ApiDataTemplate {
         val EMBEDDING_CONFIG = SettingKey(ProxySettingsRepository.Settings.EMBEDDING_CONFIG, labelRes = R.string.label_embedding_model, type = "model_select", placeholderRes = R.string.placeholder_custom_model)
     }
 
-    object Proxy : SettingGroup() {
-        val LLM = SettingKey(ProxySettingsRepository.Settings.LLM_ENDPOINT, R.string.label_llm_endpoint, "url", R.string.placeholder_custom_endpoint)
-        val LLM_KEY = SettingKey(ProxySettingsRepository.Settings.LLM_KEY, R.string.label_llm_key, "password")
-        val LLM_MODEL = SettingKey(ProxySettingsRepository.Settings.LLM_MODEL, R.string.label_llm_model, "model_select", R.string.placeholder_custom_model)
-        val VLM = SettingKey(ProxySettingsRepository.Settings.VLM_ENDPOINT, R.string.label_vlm_endpoint, "url", R.string.placeholder_custom_endpoint)
-        val VLM_KEY = SettingKey(ProxySettingsRepository.Settings.VLM_KEY, R.string.label_vlm_key, "password")
-        val VLM_MODEL = SettingKey(ProxySettingsRepository.Settings.VLM_MODEL, R.string.label_vlm_model, "model_select", R.string.placeholder_custom_model)
-        val EMBEDDING = SettingKey(ProxySettingsRepository.Settings.EMBEDDING_ENDPOINT, R.string.label_embedding_endpoint, "url", R.string.placeholder_custom_endpoint)
-        val EMBEDDING_KEY = SettingKey(ProxySettingsRepository.Settings.EMBEDDING_KEY, R.string.label_embedding_key, "password")
-        val EMBEDDING_MODEL = SettingKey(ProxySettingsRepository.Settings.EMBEDDING_MODEL, R.string.label_embedding_model, "model_select", R.string.placeholder_custom_model)
-        val STT = SettingKey(ProxySettingsRepository.Settings.STT_ENDPOINT, R.string.label_stt_endpoint, "url", R.string.placeholder_custom_endpoint)
-        val STT_KEY = SettingKey(ProxySettingsRepository.Settings.STT_KEY, R.string.label_stt_key, "password")
-        val VAD = SettingKey(ProxySettingsRepository.Settings.CUSTOM_VAD_MODEL, R.string.label_custom_vad, "radio", options = ProxySettingsRepository.Proxy.VAD.OPTIONS, default = ProxySettingsRepository.Proxy.VAD.YAMNET)
+    object Speech : SettingGroup() {
+        val STT = SettingKey(ProxySettingsRepository.Settings.STT_ENDPOINT, labelRes = R.string.label_stt_endpoint, type = "url", placeholderRes = R.string.placeholder_custom_endpoint)
+        val STT_KEY = SettingKey(ProxySettingsRepository.Settings.STT_KEY, labelRes = R.string.label_stt_key, type = "password")
+        val VAD = SettingKey(ProxySettingsRepository.Settings.CUSTOM_VAD_MODEL, labelRes = R.string.label_custom_vad, type = "options", options = ProxySettingsRepository.Proxy.VAD.OPTIONS, default = ProxySettingsRepository.Proxy.VAD.YAMNET)
     }
 
     object Database : SettingGroup() {
@@ -93,25 +98,87 @@ object ApiDataTemplate {
     }
 
     object Tools : SettingGroup() {
-        val VISION_ANALYSIS = SettingKey(ProxySettingsRepository.Settings.GROQ_KEY, R.string.label_groq_key, "password")
-        val WEB_SEARCH_KEY = SettingKey(ProxySettingsRepository.Settings.TAVILY_KEY, R.string.label_tavily_key, "password", R.string.placeholder_tavily_key)
-        val OPENWEATHER_KEY = SettingKey(ProxySettingsRepository.Settings.OPENWEATHER_KEY, R.string.label_openweather_key, "password")
-        val YOUTUBE_KEY = SettingKey(ProxySettingsRepository.Settings.YOUTUBE_KEY, R.string.label_youtube_key, "password")
+        val VISION_ANALYSIS = SettingKey(ProxySettingsRepository.Settings.GROQ_KEY, labelRes = R.string.label_groq_key, type = "password")
+        val WEB_SEARCH_KEY = SettingKey(ProxySettingsRepository.Settings.TAVILY_KEY, labelRes = R.string.label_tavily_key, type = "password", placeholderRes = R.string.placeholder_tavily_key)
+        val OPENWEATHER_KEY = SettingKey(ProxySettingsRepository.Settings.OPENWEATHER_KEY, labelRes = R.string.label_openweather_key, type = "password")
+        val YOUTUBE_KEY = SettingKey(ProxySettingsRepository.Settings.YOUTUBE_KEY, labelRes = R.string.label_youtube_key, type = "password")
     }
 
     object System : SettingGroup() {
-        val PROMPT_OVERRIDE = SettingKey(
-            ProxySettingsRepository.Settings.SYSTEM_PROMPT,
-            R.string.label_system_prompt,
-            "modal_textarea",
-            default = ProxySettingsRepository.defaultSystemPrompt
-        )
-        val ROUTING_MODE = SettingKey(ProxySettingsRepository.Settings.SYSTEM_ROUTING_MODE, R.string.label_routing_mode, "radio", options = ProxySettingsRepository.Modes.ROUTING.OPTIONS, default = ProxySettingsRepository.Modes.ROUTING.CUSTOM)
-        val AUDIO_MODE = SettingKey(ProxySettingsRepository.Settings.SYSTEM_AUDIO_MODE, R.string.label_audio_mode, "radio", options = ProxySettingsRepository.Modes.AUDIO.OPTIONS, default = ProxySettingsRepository.Modes.AUDIO.CUSTOM)
+        val PROMPT_OVERRIDE = SettingKey(ProxySettingsRepository.Settings.SYSTEM_PROMPT, labelRes = R.string.label_system_prompt, type = "modal_textarea", default = ProxySettingsRepository.defaultSystemPrompt)
+        val ROUTING_MODE = SettingKey(ProxySettingsRepository.Settings.SYSTEM_ROUTING_MODE, labelRes = R.string.label_routing_mode, type = "options", options = ProxySettingsRepository.Modes.ROUTING.OPTIONS, default = ProxySettingsRepository.Modes.ROUTING.CUSTOM)
+        val AUDIO_MODE = SettingKey(ProxySettingsRepository.Settings.SYSTEM_AUDIO_MODE, labelRes = R.string.label_audio_mode, type = "options", options = ProxySettingsRepository.Modes.AUDIO.OPTIONS, default = ProxySettingsRepository.Modes.AUDIO.CUSTOM)
     }
 
     val allSettings: List<SettingKey> by lazy {
-        Providers.allKeys() + Proxy.allKeys() + Database.allKeys() + Tools.allKeys() + System.allKeys()
+        Providers.allKeys() + Azure.allKeys() + Models.allKeys() + Speech.allKeys() + Database.allKeys() + Tools.allKeys() + System.allKeys()
+    }
+
+    /**
+     * Builds dynamic schema for the app controls present in SettingsScreen.kt
+     */
+    fun buildAppDynamicSchema(context: Context): JSONObject {
+        val apiKeyManager = ApiKeyManager(context)
+        val toolRegistry = ToolRegistry()
+
+        val configuredProviders = apiKeyManager.getConfiguredProviders().toList()
+        val providersToUse = configuredProviders.ifEmpty { AppSettingsDefaults.providers }
+
+        val activeProviders = providersToUse.map { provider ->
+            JSONObject().apply {
+                put("value", provider.name)
+                put("label", provider.getDisplayName())
+            }
+        }
+
+        val languages = SettingsRepository.getAvailableLanguages().map {
+            JSONObject().apply {
+                put("code", it.code)
+                put("name", it.displayName)
+            }
+        }
+
+        val toolsList = JSONArray()
+        toolRegistry.getAllToolNames().forEach { toolName ->
+            val tool = toolRegistry.getOrCreateTool(toolName)
+            val desc = tool?.getDefinition()?.optString("description", "No description") ?: "No description"
+            val (reqKey, isAvail) = when (toolName) {
+                "analyze_vision" -> "Groq" to apiKeyManager.isVisionAnalysisAvailable()
+                "search_internet" -> "Tavily" to apiKeyManager.isInternetSearchAvailable()
+                "get_weather" -> "OpenWeatherMap" to apiKeyManager.isWeatherAvailable()
+                "play_youtube_video" -> "YouTube" to apiKeyManager.isYouTubeAvailable()
+                else -> null to true
+            }
+            toolsList.put(JSONObject().apply {
+                put("name", toolName)
+                put("description", desc)
+                put("apiKeyRequired", reqKey ?: JSONObject.NULL)
+                put("isApiKeyAvailable", isAvail)
+            })
+        }
+
+        return JSONObject().apply {
+            put("providers", JSONArray(activeProviders))
+            put("modelsMap", JSONObject().apply {
+                put(RealtimeApiProvider.OPENAI_DIRECT.name, JSONArray(AppSettingsDefaults.openAiModels))
+                put(RealtimeApiProvider.AZURE_OPENAI.name, JSONArray(AppSettingsDefaults.openAiModels))
+                put(RealtimeApiProvider.XAI.name, JSONArray(AppSettingsDefaults.xaiModels))
+                put(RealtimeApiProvider.GOOGLE_GEMINI.name, JSONArray(AppSettingsDefaults.googleModels))
+            })
+            put("voicesMap", JSONObject().apply {
+                put(RealtimeApiProvider.OPENAI_DIRECT.name, JSONObject(AppSettingsDefaults.openAiVoices as Map<*, *>))
+                put(RealtimeApiProvider.AZURE_OPENAI.name, JSONObject(AppSettingsDefaults.openAiVoices as Map<*, *>))
+                put(RealtimeApiProvider.XAI.name, JSONObject(AppSettingsDefaults.xaiVoices as Map<*, *>))
+                put(RealtimeApiProvider.GOOGLE_GEMINI.name, JSONObject(AppSettingsDefaults.googleVoices as Map<*, *>))
+            })
+            put("languages", JSONArray(languages))
+            put("audioInputModes", JSONArray(AppSettingsDefaults.audioInputModes))
+            put("transcriptionModels", JSONArray(AppSettingsDefaults.transcriptionModels))
+            put("turnDetectionTypes", JSONArray(AppSettingsDefaults.turnDetectionTypes))
+            put("eagernessLevels", JSONArray(AppSettingsDefaults.eagernessLevels))
+            put("noiseReductionTypes", JSONArray(AppSettingsDefaults.noiseReductionTypes))
+            put("availableTools", toolsList)
+        }
     }
 
 }

@@ -117,7 +117,7 @@ object DashboardManager {
         }
 
         val syncPacket = JSONObject().apply {
-            put("type", "sync_local_storage")
+            put(ProxySettingsRepository.Logging.Keys.TYPE, ProxySettingsRepository.Dashboard.Events.CHAT_SYNC)
             put("userId", userId)
             put("history", historyArray)
         }

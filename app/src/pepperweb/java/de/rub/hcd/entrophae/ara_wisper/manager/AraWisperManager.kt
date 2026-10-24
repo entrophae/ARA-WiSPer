@@ -6,9 +6,11 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.AssetManager
 import android.os.Bundle
+import android.util.Log
 import androidx.lifecycle.ViewModelProvider
 import ch.fhnw.pepper_realtime.ui.ChatActivity
 import ch.fhnw.pepper_realtime.ui.ChatViewModel
+import de.rub.hcd.entrophae.ara_wisper.core.ChatActivityAdapter
 import de.rub.hcd.entrophae.ara_wisper.server.AraWisperServer
 
 object AraWisperManager : Application.ActivityLifecycleCallbacks {
@@ -42,6 +44,27 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
 
     fun appString(id: Int, vararg args: Any): String {
         return app.getString(id, *args)
+    }
+
+    fun applyMuteState() {
+        val micState = appPrefs.getBoolean(ProxySettingsRepository.Settings.MIC_STATUS, false)
+
+        currentChatActivity?.runOnUiThread {
+            try {
+                val chatActivityAdapter = ChatActivityAdapter(currentChatActivity!!)
+                if (micState) {
+                    Log.i(ProxySettingsRepository.TAG+"TEST", "unmuting")
+                    currentChatActivity?.unmuteMicrophone()
+                } else {
+                    Log.i(ProxySettingsRepository.TAG+"TEST", "muting")
+                    currentChatActivity?.muteMicrophone()
+                }
+            } catch (e: Exception) {
+                Log.e(ProxySettingsRepository.TAG+"TEST", "applymuteState", e)
+            }
+        }
+
+        Log.i(ProxySettingsRepository.TAG, "Applied mic state from preferences")
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {

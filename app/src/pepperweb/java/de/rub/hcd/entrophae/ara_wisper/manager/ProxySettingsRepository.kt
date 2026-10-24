@@ -1,6 +1,10 @@
 package de.rub.hcd.entrophae.ara_wisper.manager
 
+import android.util.Log
+import ch.fhnw.pepper_realtime.manager.SettingsRepository
+import ch.fhnw.pepper_realtime.tools.ToolRegistry
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appPrefs
+import androidx.core.content.edit
 
 object ProxySettingsRepository {
     const val PREFS_NAME = "PepperDialogPrefs"
@@ -12,6 +16,10 @@ object ProxySettingsRepository {
 
     fun getPref(key: String, default: String = ""): String {
         return appPrefs.getString(key, default) ?: default
+    }
+
+    fun setPref(key: String, value: String) {
+        appPrefs.edit { putString(key, value) }
     }
 
     val currentAudioMode: String
@@ -85,12 +93,17 @@ object ProxySettingsRepository {
 
     var customSystemPrompt: String
         get() = getPref(Settings.SYSTEM_PROMPT, "")
+        set(value) = appPrefs.edit().putString(Settings.SYSTEM_PROMPT, value).apply()
+
+    val activeSystemPrompt: String
+        get() = customSystemPrompt.ifEmpty { defaultSystemPrompt }
 
     val defaultSystemPrompt: String
         get() = try {
             AraWisperManager.appAssets.open("default_german_system_prompt.txt")
                 .bufferedReader().use { it.readText() }
         } catch (e: Exception) {
+            Log.e(TAG, "Not able to read default file", e)
             "You are a helpful assistant."
         }
 
@@ -101,6 +114,55 @@ object ProxySettingsRepository {
         } catch (e: Exception) {
             ""
         }
+
+    private val frameworkSettings = SettingsRepository(AraWisperManager.app, ToolRegistry())
+    var enabledFrameworkTools = frameworkSettings.enabledTools
+
+    var enabledTools: Set<String>
+        get() {
+            val savedTools = appPrefs.getStringSet(KEY_ENABLED_TOOLS, null)
+            val knownTools = appPrefs.getStringSet(KEY_KNOWN_TOOLS, null)
+
+            return if (savedTools == null) {
+                appPrefs.edit().putStringSet(KEY_KNOWN_TOOLS, customTools).apply()
+                customTools
+            } else {
+                val newTools = customTools.filter { it !in (knownTools ?: emptySet()) }
+                if (newTools.isNotEmpty()) {
+                    val mergedTools = HashSet(savedTools)
+                    for (newTool in newTools) {
+                        mergedTools.add(newTool)
+                    }
+                    appPrefs.edit().putStringSet(KEY_KNOWN_TOOLS, customTools).apply()
+                    enabledTools = mergedTools
+                    mergedTools
+                } else {
+                    savedTools
+                }
+            }
+        }
+        set(value) = appPrefs.edit().putStringSet(KEY_ENABLED_TOOLS, value).apply()
+
+    val standardTools: Set<String>
+        get() = ToolRegistry().getAllToolNames()
+
+    val customTools: Set<String>
+        get() = AraWisperToolRegistry().getAllToolNames()
+
+    var currentTools: org.json.JSONArray? = null
+
+    fun isStandardTool(toolName: String): Boolean {
+        return toolName in standardTools
+    }
+
+    private fun getModelConfig(key: String): org.json.JSONObject {
+        val raw = getPref(key, "{}")
+        return try {
+            org.json.JSONObject(raw)
+        } catch (e: Exception) {
+            org.json.JSONObject().put("id", raw)
+        }
+    }
 
     var activeUserId: String = "default_user"
     
@@ -182,6 +244,8 @@ object ProxySettingsRepository {
         const val YOUTUBE_KEY= "YOUTUBE_API_KEY"
         const val AZURE_SPEECH_KEY = "AZURE_SPEECH_KEY"
         const val AZURE_SPEECH_REGION = "AZURE_SPEECH_REGION"
+
+        const val MIC_STATUS = "MIC_STATUS"
     }
 
     object Dashboard {
@@ -190,8 +254,12 @@ object ProxySettingsRepository {
             const val SAVE_API_KEYS = "SAVE_API_KEYS"
             const val STATUS_UPDATE = "STATUS_UPDATE"
             const val CHAT_UPDATE = "CHAT_UPDATE"
+            const val CHAT_SYNC = "CHAT_SYNC"
             const val CHAT_COMMAND = "CHAT_COMMAND"
             const val MIC_ACTIVITY = "MIC_ACTIVITY"
+            const val TOGGLE_MUTE = "TOGGLE_MUTE"
+            const val RESTART = "RESTART"
+            const val INTERRUPT = "INTERRUPT"
             const val SET_USER = "SET_USER"
             const val DELETE_USER = "DELETE_USER"
             const val UPDATE_USER_KNOWLEDGE = "UPDATE_USER_KNOWLEDGE"

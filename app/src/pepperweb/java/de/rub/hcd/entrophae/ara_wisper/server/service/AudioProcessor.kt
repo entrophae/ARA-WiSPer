@@ -2,6 +2,7 @@ package de.rub.hcd.entrophae.ara_wisper.server.service
 
 import android.util.Base64
 import android.util.Log
+import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import de.rub.hcd.entrophae.ara_wisper.server.manager.DashboardManager
 import java.io.ByteArrayOutputStream
@@ -37,6 +38,7 @@ class AudioProcessor(
             }
             framesEvaluated++
         }
+        AraWisperManager.applyMuteState()
 
         val effectivelySpeaking = if (framesEvaluated > 0) hasSpeech else isSpeaking
 

@@ -1,21 +1,15 @@
 package de.rub.hcd.entrophae.ara_wisper.server.routes
 
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Typeface
-import android.util.Base64
 import android.util.Log
 import androidx.core.content.edit
 import ch.fhnw.pepper_realtime.R
-import ch.fhnw.pepper_realtime.network.HttpClientManager
 import ch.fhnw.pepper_realtime.ui.ChatMessage
 import ch.fhnw.pepper_realtime.ui.ChatViewModel
 import com.google.gson.Gson
 import de.rub.hcd.entrophae.ara_wisper.core.ApiDataTemplate
-import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appPrefs
-import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appString
+import de.rub.hcd.entrophae.ara_wisper.core.ChatActivityAdapter
+import de.rub.hcd.entrophae.ara_wisper.core.SettingsAdapter
+import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings
 import de.rub.hcd.entrophae.ara_wisper.server.data.ChatTurn
@@ -42,7 +36,7 @@ import de.rub.hcd.entrophae.ara_wisper.server.network.SttClient
 fun Route.dashboardRouting(viewModel: ChatViewModel) {
 
     webSocket(ProxySettingsRepository.Routes.WS) {
-        Log.i(appString(R.string.app_name), "Dashboard connected!")
+        Log.i(AraWisperManager.appString(R.string.app_name), "Dashboard connected!")
 
         sendJsonToClient(JSONObject().apply{
                 put("status", "connected")
@@ -174,18 +168,24 @@ fun Route.dashboardRouting(viewModel: ChatViewModel) {
 }
 
 private suspend fun DefaultWebSocketServerSession.sendInitialApiKeys() {
-    val dataObj = JSONObject().apply {
-        ApiDataTemplate.allSettings.forEach { setting ->
-            put(setting.id, ProxySettingsRepository.getPref(setting.id, setting.default))
-        }
-    }
+    val prefs = AraWisperManager.appPrefs
+
+    val activity = AraWisperManager.currentChatActivity
+    val adapter = activity?.let { ChatActivityAdapter(it) }
+
+    val dataObj = SettingsAdapter.readAllAsJson(prefs, adapter)
+
     val schemaObj = JSONObject().apply {
         put("models", ApiDataTemplate.Models.toUiSchema())
         put("database", ApiDataTemplate.Database.toUiSchema())
         put("speech",ApiDataTemplate.Speech.toUiSchema())
         put("tools", ApiDataTemplate.Tools.toUiSchema())
         put("system", ApiDataTemplate.System.toUiSchema())
+        put("providers", ApiDataTemplate.Providers.toUiSchema())
+        put("azure", ApiDataTemplate.Azure.toUiSchema())
+        put("appSettings", ApiDataTemplate.buildAppDynamicSchema(AraWisperManager.appContext))
     }
+
     val currentKeys = WebSocketPayloads.dashboardPayload(
         ProxySettingsRepository.Dashboard.Events.LOAD_API_KEYS,
         dataObj
@@ -235,6 +235,15 @@ private suspend fun DefaultWebSocketServerSession.handleDashboardCommand(rawJson
             }
             ProxySettingsRepository.Dashboard.Events.CLEAR_HISTORY -> {
                 processClearHistory(json, viewModel)
+            }
+            ProxySettingsRepository.Dashboard.Events.TOGGLE_MUTE -> {
+                processToggleMute(json)
+            }
+            ProxySettingsRepository.Dashboard.Events.RESTART -> {
+                processRestart()
+            }
+            ProxySettingsRepository.Dashboard.Events.INTERRUPT -> {
+                processInterrupt()
             }
 
             else -> {
@@ -355,20 +364,39 @@ private suspend fun processUpdateUserKnowledge(json: JSONObject, viewModel: Chat
     DashboardManager.syncHistoryToBrowser(userId)
 }
 
-private suspend fun DefaultWebSocketServerSession.processSaveKeys(data: JSONObject, viewModel: ChatViewModel) {
-    appPrefs.edit {
-        ApiDataTemplate.allSettings.forEach { setting ->
-            val value = data.optString(setting.id, setting.default)
-            if (value.isNotBlank()) putString(setting.id, value) else remove(setting.id)
-        }
-    }
-    viewModel.startNewSession()
+private suspend fun DefaultWebSocketServerSession.processSaveKeys(json: JSONObject, viewModel: ChatViewModel) {
+    val data = json.getJSONObject("data")
+    val prefs = AraWisperManager.appPrefs
+    val activity = AraWisperManager.currentChatActivity
+    val adapter = activity?.let { ChatActivityAdapter(it) }
 
-    val successMsg = WebSocketPayloads.dashboardPayload(ProxySettingsRepository.Dashboard.Events.STATUS_UPDATE,"API Keys Saved! Restarting session...")
+    SettingsAdapter.saveJsonToPrefs(prefs, data, adapter)
+
+    val successMsg = WebSocketPayloads.dashboardPayload(ProxySettingsRepository.Dashboard.Events.STATUS_UPDATE,"Settings saved!")
     sendJsonToClient(successMsg)
 }
 
-private suspend fun DefaultWebSocketServerSession.sendJsonToClient(payload: JSONObject) {
+private suspend fun DefaultWebSocketServerSession.processRestart() {
+    val activity = AraWisperManager.currentChatActivity
+    val adapter = activity?.let { ChatActivityAdapter(it) }
+
+    adapter?.restartSession()
+
+    val successMsg = WebSocketPayloads.dashboardPayload(ProxySettingsRepository.Dashboard.Events.STATUS_UPDATE,"Restarting connection")
+    sendJsonToClient(successMsg)
+}
+private suspend fun DefaultWebSocketServerSession.processInterrupt() {
+    val activity = AraWisperManager.currentChatActivity
+    val adapter = activity?.let { ChatActivityAdapter(it) }
+
+    adapter?.interruptSpeech()
+
+    val successMsg = WebSocketPayloads.dashboardPayload(ProxySettingsRepository.Dashboard.Events.STATUS_UPDATE,"Speech interrupted")
+    sendJsonToClient(successMsg)
+}
+
+
+suspend fun DefaultWebSocketServerSession.sendJsonToClient(payload: JSONObject) {
     try {
         send(Frame.Text(payload.toString()))
     } catch (e: Exception) {

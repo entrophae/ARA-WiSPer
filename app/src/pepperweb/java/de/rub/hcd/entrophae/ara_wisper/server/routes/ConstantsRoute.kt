@@ -20,11 +20,19 @@ fun Route.constantsRouting(viewModel: ChatViewModel) {
 
             "MSG_${ProxySettingsRepository.Dashboard.Events.CHAT_UPDATE}" to ProxySettingsRepository.Dashboard.Events.CHAT_UPDATE,
 
+            "MSG_${ProxySettingsRepository.Dashboard.Events.CHAT_SYNC}" to ProxySettingsRepository.Dashboard.Events.CHAT_SYNC,
+
             "MSG_${ProxySettingsRepository.Dashboard.Events.SAVE_API_KEYS}" to ProxySettingsRepository.Dashboard.Events.SAVE_API_KEYS,
 
             "MSG_${ProxySettingsRepository.Dashboard.Events.CHAT_COMMAND}" to ProxySettingsRepository.Dashboard.Events.CHAT_COMMAND,
 
             "MSG_${ProxySettingsRepository.Dashboard.Events.MIC_ACTIVITY}" to ProxySettingsRepository.Dashboard.Events.MIC_ACTIVITY,
+
+            "MSG_${ProxySettingsRepository.Dashboard.Events.TOGGLE_MUTE}" to ProxySettingsRepository.Dashboard.Events.TOGGLE_MUTE,
+
+            "MSG_${ProxySettingsRepository.Dashboard.Events.RESTART}" to ProxySettingsRepository.Dashboard.Events.RESTART,
+
+            "MSG_${ProxySettingsRepository.Dashboard.Events.INTERRUPT}" to ProxySettingsRepository.Dashboard.Events.INTERRUPT,
 
             "MSG_${ProxySettingsRepository.Logging.TYPE_PROXY_LOG}" to ProxySettingsRepository.Logging.TYPE_PROXY_LOG,
 
