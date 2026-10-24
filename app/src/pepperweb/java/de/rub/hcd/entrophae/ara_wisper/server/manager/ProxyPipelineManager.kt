@@ -334,24 +334,6 @@ class ProxyPipelineManager(
         }
 
     }
-    
-    suspend fun recreateSession() {
-        // Fetch the turns from your database
-        val savedTurns = DataBaseClient.getUserHistory(currentUserId)
-
-        for (turn in savedTurns) {
-            // Recreate User message
-            val userPayload = WebSocketPayloads.itemCreateUser(turn.turnId, turn.userQuery)
-            sendToApp(userPayload)
-            DashboardManager.sendChat(isUser = true, text = turn.userQuery)
-
-            // Recreate LLM message
-            val llmPayload = WebSocketPayloads.itemCreateLLM(turn.turnId + "_llm", turn.llmResponse)
-            sendToApp(llmPayload)
-            DashboardManager.sendChat(isUser = false, text = turn.llmResponse)
-
-        }
-    }
 
     private suspend fun processLlmText(llmText: String, pipelineContext: PipelineContext, isThinkingText: Boolean = false) {
         if (llmText.isNotBlank()) {

@@ -28,7 +28,9 @@ fun Route.proxyRouting() {
         send(Frame.Text(handshake))
         DashboardManager.sendLog(handshake, isFromRobot = false)
 
-        manager.recreateSession()
+        DashboardManager.recreateSession {
+            sendToApp(it)
+        }
 
         for (frame in incoming) {
             if (frame is Frame.Text) {

@@ -81,6 +81,27 @@ object DashboardManager {
 
         _events.tryEmit(syncPacket)
     }
+
+    suspend fun recreateSession(sendToApp: suspend (String) -> Unit) {
+        // Fetch the turns from database
+        val currentUserId = ProxySettingsRepository.activeUserId
+        val savedTurns = DataBaseClient.getUserHistory(currentUserId)
+
+        for (turn in savedTurns) {
+            // Recreate User message
+            val userPayload = WebSocketPayloads.itemCreateUser(turn.turnId, turn.userQuery)
+            sendToApp( userPayload )
+            sendChat(isUser = true, text = turn.userQuery,
+                userImageUrl = turn.userImageUrl)
+
+            // Recreate LLM message
+            val llmPayload = WebSocketPayloads.itemCreateLLM(turn.turnId + "_llm", turn.llmResponse)
+            sendToApp(llmPayload)
+            sendChat(isUser = false, text = turn.llmResponse)
+
+        }
+    }
+
 }
 
 suspend fun DefaultWebSocketServerSession.sendToApp(jsonString: String) {
