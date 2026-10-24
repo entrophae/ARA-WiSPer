@@ -89,7 +89,7 @@ class AudioInputController @Inject constructor(
             }
 
             val isGoogle = settingsRepository.apiProviderEnum.isGoogleProvider()
-            val isProxy = _root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.isCustomProxyRouting
+            val isProxy = ProxySettingsRepository.isCustomProxyAudio
 
             val requiresRecreation = realtimeAudioInput != null &&
                     (realtimeAudioInput!!.isGoogleProvider != isGoogle || realtimeAudioInput!!.isProxy != isProxy)

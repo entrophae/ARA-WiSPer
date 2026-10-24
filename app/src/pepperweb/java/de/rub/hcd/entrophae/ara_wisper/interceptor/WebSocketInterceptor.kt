@@ -12,11 +12,11 @@ object WebSocketInterceptor {
         sessionManager: RealtimeSessionManager,
         callback: WebSocketConnectionCallback?
     ): Boolean {
-        if (!_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.isCustomProxyRouting) {
+        if (!ProxySettingsRepository.isCustomProxyRouting) {
             return false
         }
 
-        val localProxyUrl = "ws://127.0.0.1:8080" + _root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Routes.PROXY
+        val localProxyUrl = "ws://127.0.0.1:8080" + ProxySettingsRepository.Routes.PROXY
         Log.i(tag, "Routing connection directly to local proxy: $localProxyUrl")
 
         try {

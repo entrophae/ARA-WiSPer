@@ -35,7 +35,7 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
 
     val appPrefs: SharedPreferences
         get() = app.getSharedPreferences(
-            _root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.PREFS_NAME,
+            ProxySettingsRepository.PREFS_NAME,
             Context.MODE_PRIVATE
         )
 

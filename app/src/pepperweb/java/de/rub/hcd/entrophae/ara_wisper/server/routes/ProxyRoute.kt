@@ -12,7 +12,6 @@ import io.ktor.server.routing.Route
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
-import kotlinx.coroutines.CoroutineScope
 import org.json.JSONObject
 
 fun Route.proxyRouting() {

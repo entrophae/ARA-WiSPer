@@ -301,7 +301,7 @@ class ChatSessionController @Inject constructor(
         try {
             
             // ARA-WiSPer Custom Proxy Route
-            if (_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.interceptor.WebSocketInterceptor.interceptConnection(TAG, sessionManager, callback)) {
+            if (WebSocketInterceptor.interceptConnection(TAG, sessionManager, callback)) {
                 return
             }
 

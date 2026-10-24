@@ -30,13 +30,13 @@ object ProxySettingsRepository {
 
     val currentVadMode: String
         get() = getPref(Settings.CUSTOM_VAD_MODEL, Proxy.VAD.WEBRTC)
-        
+
     val isCustomProxyAudio: Boolean
         get() = currentAudioMode == Modes.AUDIO.CUSTOM
-        
+
     val isGoogleAudio: Boolean
         get() = currentAudioMode == Modes.AUDIO.GOOGLE
-        
+
     val isCustomProxyRouting: Boolean
         get() = currentRoutingMode == Modes.ROUTING.CUSTOM
 
@@ -78,7 +78,7 @@ object ProxySettingsRepository {
 
     val customSttKey: String
         get() = getPref(Settings.STT_KEY, "")
-    
+
     val databasePersonApiEndpoint: String
         get() = getPref(Settings.PERSON_DB_API_ENDPOINT, "").removeSuffix("/")
 
@@ -165,7 +165,7 @@ object ProxySettingsRepository {
     }
 
     var activeUserId: String = "default_user"
-    
+
     object Routes {
         const val WS = "/ws"
         const val CONSTANTS = "/constants"
@@ -272,8 +272,8 @@ object ProxySettingsRepository {
         const val TYPE_PROXY_LOG = "PROXY_WS_LOG"
 
         object Direction {
-            const val RTP = "🤖 Robot -> 🎛️️ Proxy"
-            const val PTR = "🎛️️ Proxy -> 🤖 Robot"
+            const val RTP = "Robot -> Proxy"
+            const val PTR = "️Proxy -> Robot"
         }
 
         object Keys {

@@ -1,7 +1,6 @@
 package de.rub.hcd.entrophae.ara_wisper.server
 
 import android.util.Log
-import ch.fhnw.pepper_realtime.tools.ToolContext
 import ch.fhnw.pepper_realtime.ui.ChatViewModel
 import de.rub.hcd.entrophae.ara_wisper.server.routes.dashboardRouting
 import de.rub.hcd.entrophae.ara_wisper.server.routes.proxyRouting

@@ -10,8 +10,8 @@ class AraWisperInitiator : ContentProvider() {
 
     override fun onCreate(): Boolean {
         val app = context?.applicationContext as? Application ?: return false
-        _root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.init(app)
-        app.registerActivityLifecycleCallbacks(_root_ide_package_.de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager)
+        AraWisperManager.init(app)
+        app.registerActivityLifecycleCallbacks(AraWisperManager)
         return true
     }
 
