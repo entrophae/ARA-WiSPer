@@ -12,6 +12,18 @@ import ch.fhnw.pepper_realtime.ui.ChatActivity
 import ch.fhnw.pepper_realtime.ui.ChatViewModel
 import de.rub.hcd.entrophae.ara_wisper.core.ChatActivityAdapter
 import de.rub.hcd.entrophae.ara_wisper.server.AraWisperServer
+import android.view.ViewGroup
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.MutableStateFlow
 
 object AraWisperManager : Application.ActivityLifecycleCallbacks {
     private var webServer: AraWisperServer? = null
@@ -24,6 +36,8 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
 
     lateinit var speechManager: SpeechManager
         private set
+
+    var isSessionAllowed = MutableStateFlow(false)
 
     fun init(application: Application) {
         app = application
@@ -58,27 +72,40 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
     }
 
     override fun onActivityStarted(activity: Activity) {
-        /*if (activity is ChatActivity) {
-            val rootView = activity.findViewById<ViewGroup>(R.id.content)
+        if (activity is ChatActivity) {
+            val rootView = activity.findViewById<ViewGroup>(android.R.id.content)
 
-            // Place Headless UI directly on top of the chat screen
-            if (rootView.findViewWithTag<ComposeView>("admin_ui") == null) {
+            if (rootView.findViewWithTag<ComposeView>("admin_ui") == null && !isSessionAllowed.value) {
                 val adminView = ComposeView(activity).apply {
                     tag = "admin_ui"
                     setContent {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.DarkGray),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("ARA-WiSPer Server Running\n(Headless Mode)", color = Color.White)
+                        val allowed by isSessionAllowed.collectAsState()
+
+                        if (!allowed) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.DarkGray.copy()),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("ARA-WiSPer Server Running", color = Color.White)
+                                    Text("Access Dashboard at port :8080", color = Color.LightGray)
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                    Button(onClick = {
+                                        isSessionAllowed.value = true
+                                        chatActivityAdapter?.restartSession()
+                                    }) {
+                                        Text("Activate LLM Mode")
+                                    }
+                                }
+                            }
                         }
                     }
                 }
                 rootView.addView(adminView)
             }
-        }*/
+        }
     }
 
     override fun onActivityDestroyed(activity: Activity) {

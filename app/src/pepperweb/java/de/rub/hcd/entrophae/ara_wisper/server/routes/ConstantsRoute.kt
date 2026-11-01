@@ -14,6 +14,8 @@ fun Route.constantsRouting(viewModel: ChatViewModel) {
         // Map your Kotlin constants to the keys your JS expects
         val constants = mapOf(
             // Dashboard Message Types
+            "MSG_${ProxySettingsRepository.Dashboard.Events.TOGGLE_LLM_MODE}" to ProxySettingsRepository.Dashboard.Events.TOGGLE_LLM_MODE,
+
             "MSG_${ProxySettingsRepository.Dashboard.Events.LOAD_API_KEYS}" to ProxySettingsRepository.Dashboard.Events.LOAD_API_KEYS,
 
             "MSG_${ProxySettingsRepository.Dashboard.Events.STATUS_UPDATE}" to ProxySettingsRepository.Dashboard.Events.STATUS_UPDATE,

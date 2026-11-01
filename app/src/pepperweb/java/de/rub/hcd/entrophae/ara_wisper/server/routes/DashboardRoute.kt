@@ -212,6 +212,9 @@ private suspend fun DefaultWebSocketServerSession.handleDashboardCommand(rawJson
         val json = JSONObject(rawJson)
         val type = json.optString(ProxySettingsRepository.Proxy.Keys.TYPE)
         when (type) {
+            ProxySettingsRepository.Dashboard.Events.TOGGLE_LLM_MODE -> {
+                processToggleLLMMode()
+            }
             ProxySettingsRepository.Dashboard.Events.SAVE_API_KEYS -> {
                 processSaveKeys(json, viewModel)
             }
@@ -350,6 +353,11 @@ private suspend fun processUpdateUserKnowledge(json: JSONObject, viewModel: Chat
         }
     }
     DashboardManager.syncHistoryToBrowser(userId)
+}
+
+private suspend fun DefaultWebSocketServerSession.processToggleLLMMode() {
+    AraWisperManager.isSessionAllowed.value = !AraWisperManager.isSessionAllowed.value
+    processRestart()
 }
 
 private suspend fun DefaultWebSocketServerSession.processSaveKeys(json: JSONObject, viewModel: ChatViewModel) {

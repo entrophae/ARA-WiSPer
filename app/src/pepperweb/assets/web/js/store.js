@@ -4,6 +4,7 @@ const appStore = reactive({
     constants: {},
     host: document.domain,
     isConnected: false,
+    isLLMMode: false,
     isSTTConnected: false,
     isDBConnected: false,
     isRAGConnected: false,
@@ -51,6 +52,15 @@ const appStore = reactive({
             this.logMessage('Saved new API configuration.', 'log-system');
         } else {
             this.logMessage('ERROR: Cannot save settings. Robot is disconnected!', 'log-error');
+        }
+    },
+    toggleLLMMode() {
+        const success = ApiService.sendSocketMessage(this.socket, {
+            type: this.constants.MSG_TOGGLE_LLM_MODE,
+            data: true
+        });
+        if (success) {
+            this.isLLMMode = !this.isLLMMode
         }
     },
     restart() {

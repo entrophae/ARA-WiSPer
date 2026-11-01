@@ -29,6 +29,11 @@
                 <div class="status-badge" :class="{ connected: store.isRAGConnected }">
                     RAG Agent
                 </div>
+            </div>
+            <div class="status-header">
+                <button class="btn-llm-toggle" @click="store.toggleLLMMode()">
+                    {{ store.isLLMMode ? 'Deactivate' : 'Activate' }} LLM Mode
+                </button>
                 <div class="status-badge" :class="{ connected: store.isLLMConfigured }">
                     LLM
                 </div>
@@ -39,14 +44,14 @@
                     ELM
                 </div>
             </div>
-            <div class="status">
+            <div class="status-header">
                 <div class="status-badge" :class="{ listening: store.isMicActive }">
                     Mic {{ store.isMicActive ? 'Listening' : 'Idle' }}
                 </div>
-                <button class="mute-btn" :class="{ muted: store.isMuted }" @click="store.toggleMute()">
+                <button :class="{ muted: store.isMuted }" @click="store.toggleMute()">
                     {{ store.isMuted ? 'Unmute' : 'Mute' }}
                 </button>
-                <button class="mute-btn" @click="store.interrupt()">
+                <button @click="store.interrupt()">
                     Interrupt
                 </button>
             </div>

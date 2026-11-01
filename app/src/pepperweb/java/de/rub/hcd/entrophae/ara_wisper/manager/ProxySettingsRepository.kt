@@ -261,6 +261,7 @@ object ProxySettingsRepository {
 
     object Dashboard {
         object Events {
+            const val TOGGLE_LLM_MODE = "TOGGLE_LLM_MODE"
             const val LOAD_API_KEYS = "LOAD_API_KEYS"
             const val SAVE_API_KEYS = "SAVE_API_KEYS"
             const val STATUS_UPDATE = "STATUS_UPDATE"

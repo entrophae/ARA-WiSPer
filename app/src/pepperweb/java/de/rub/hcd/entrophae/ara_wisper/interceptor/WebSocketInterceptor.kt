@@ -3,6 +3,7 @@ package de.rub.hcd.entrophae.ara_wisper.interceptor
 import android.util.Log
 import ch.fhnw.pepper_realtime.network.RealtimeSessionManager
 import ch.fhnw.pepper_realtime.network.WebSocketConnectionCallback
+import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 
 object WebSocketInterceptor {
@@ -14,6 +15,11 @@ object WebSocketInterceptor {
     ): Boolean {
         if (!ProxySettingsRepository.isCustomProxyRouting) {
             return false
+        }
+
+        if (!AraWisperManager.isSessionAllowed.value) {
+            Log.i(tag, "Connection blocked by AraWisperManager. Waiting for manual start.")
+            return true
         }
 
         val localProxyUrl = "ws://127.0.0.1:8080" + ProxySettingsRepository.Routes.PROXY

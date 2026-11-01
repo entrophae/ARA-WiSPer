@@ -75,6 +75,7 @@ h2 { font-size: 1.1rem; margin-bottom: 1rem; border-bottom: 2px solid var(--bord
     display: flex;
     gap: 0.5em;
     flex-wrap: wrap;
+    margin-bottom: 0.5em;
 }
 
 .status-badge {
@@ -86,7 +87,6 @@ h2 { font-size: 1.1rem; margin-bottom: 1rem; border-bottom: 2px solid var(--bord
     font-weight: bold;
     background: #fee2e2;
     color: #991b1b;
-    margin-bottom: 1rem;
     transition: all 0.3s ease;
 }
 
@@ -184,11 +184,13 @@ button {
 }
 
 button:hover { background: #002340; }
-
 .btn-secondary { background-color: var(--rub-grey); color: var(--text-main); }
 .btn-secondary:hover { background-color: #d4d4d8; }
 .btn-save { margin-top: 10px; }
 .btn-icon { width: auto; padding: 0 1rem; margin-bottom: 0; }
+
+.btn-llm-toggle { width: 100%; }
+.status-header button { padding: 0.5em; }
 
 .delete-btn {
     background: transparent;
