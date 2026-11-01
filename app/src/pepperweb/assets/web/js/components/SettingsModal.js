@@ -170,7 +170,7 @@ const SettingToolsSection = {
                         <strong>{{ tool.name }}</strong>
                     </label>
                     <span v-if="tool.apiKeyRequired" :class="['api-badge', tool.isApiKeyAvailable ? 'badge-green' : 'badge-red']">
-                        {{ tool.apiKeyRequired }}: {{ tool.isApiKeyAvailable ? 'Ready' : 'Missing Key' }}
+                        {{ tool.apiKeyRequired }}: {{ tool.isApiKeyAvailable ? 'Ready' : 'Missing/Incorrect Key' }}
                     </span>
                 </div>
                 <p class="tool-desc">{{ tool.description }}</p>
@@ -432,10 +432,10 @@ const SettingsModal = {
             return this.currentProvider.includes('XAI');
         },
         isRealtimeMode() {
-            return this.apiData.audioInputMode === 'Direct Audio';
+            return this.apiData.audioInputMode === 'realtime_api';
         },
         isServerVad() {
-            return this.apiData.turnDetectionType === 'Server VAD';
+            return this.apiData.turnDetectionType === 'server_vad';
         },
         currentModels() {
             const map = this.appSchema.modelsMap || {};

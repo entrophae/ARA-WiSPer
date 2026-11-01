@@ -16,7 +16,7 @@ import de.rub.hcd.entrophae.ara_wisper.server.AraWisperServer
 object AraWisperManager : Application.ActivityLifecycleCallbacks {
     private var webServer: AraWisperServer? = null
 
-    var currentChatActivity: ChatActivity? = null
+    var chatActivityAdapter: ChatActivityAdapter? = null
         private set
 
     lateinit var app: Application
@@ -44,27 +44,6 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
 
     fun appString(id: Int, vararg args: Any): String {
         return app.getString(id, *args)
-    }
-
-    fun applyMuteState() {
-        val micState = appPrefs.getBoolean(ProxySettingsRepository.Settings.MIC_STATUS, false)
-
-        currentChatActivity?.runOnUiThread {
-            try {
-                val chatActivityAdapter = ChatActivityAdapter(currentChatActivity!!)
-                if (micState) {
-                    Log.i(ProxySettingsRepository.TAG+"TEST", "unmuting")
-                    currentChatActivity?.unmuteMicrophone()
-                } else {
-                    Log.i(ProxySettingsRepository.TAG+"TEST", "muting")
-                    currentChatActivity?.muteMicrophone()
-                }
-            } catch (e: Exception) {
-                Log.e(ProxySettingsRepository.TAG+"TEST", "applymuteState", e)
-            }
-        }
-
-        Log.i(ProxySettingsRepository.TAG, "Applied mic state from preferences")
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
@@ -106,13 +85,13 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
         if (activity is ChatActivity) {
             webServer?.stopServer()
             webServer = null
-            currentChatActivity = null
+            chatActivityAdapter = null
         }
     }
 
     override fun onActivityResumed(activity: Activity) {
         if (activity is ChatActivity) {
-            currentChatActivity = activity
+            chatActivityAdapter = ChatActivityAdapter(activity)
         }
     }
     override fun onActivityPaused(activity: Activity) {}

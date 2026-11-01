@@ -7,6 +7,8 @@ import ch.fhnw.pepper_realtime.network.XAI_THINK_FAST_MODEL
 
 object AppSettingsDefaults {
 
+    data class SettingOption(val label: String, val value: String)
+
     val providers: List<RealtimeApiProvider>
         get() = RealtimeApiProvider.entries
 
@@ -83,7 +85,10 @@ object AppSettingsDefaults {
         "Sulafat" to "Warm"
     )
 
-    val audioInputModes = listOf(SettingsRepository.MODE_REALTIME_API, SettingsRepository.MODE_AZURE_SPEECH)
+    val audioInputModes = listOf(
+        SettingOption("Direct Audio", SettingsRepository.MODE_REALTIME_API),
+        SettingOption("Azure Speech", SettingsRepository.MODE_AZURE_SPEECH)
+    )
 
     val transcriptionModels = listOf(
         "whisper-1",
@@ -92,9 +97,21 @@ object AppSettingsDefaults {
         "gpt-4o-transcribe-diarize"
     )
 
-    val turnDetectionTypes = listOf("server_vad", "semantic_vad")
-    val eagernessLevels = listOf("auto", "low", "medium", "high")
-    val noiseReductionTypes = listOf("off", "near_field", "far_field")
+    val turnDetectionTypes = listOf(
+        SettingOption("Server VAD", "server_vad"),
+        SettingOption("Semantic VAD", "semantic_vad")
+    )
+    val eagernessLevels = listOf(
+        SettingOption("Auto (Medium)", "auto"),
+        SettingOption("Low (Max 8s)", "low"),
+        SettingOption("Medium (Max 4s)", "medium"),
+        SettingOption("High (Max 2s)", "high")
+    )
+    val noiseReductionTypes = listOf(
+        SettingOption("Off", "off"),
+        SettingOption("Near Field", "near_field"),
+        SettingOption("Far Field", "far_field")
+    )
 
     val thinkingLevels = listOf("minimal", "low", "medium", "high")
 

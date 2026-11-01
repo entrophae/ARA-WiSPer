@@ -4,7 +4,7 @@ import android.util.Log
 import ch.fhnw.pepper_realtime.manager.SettingsRepository
 import ch.fhnw.pepper_realtime.manager.TurnManager
 import ch.fhnw.pepper_realtime.ui.ChatActivity
-import ch.fhnw.pepper_realtime.ui.ChatViewModel
+import ch.fhnw.pepper_realtime.ui.settings.SettingsViewModel
 
 class ChatActivityAdapter(private val activity: ChatActivity) {
 
@@ -25,6 +25,7 @@ class ChatActivityAdapter(private val activity: ChatActivity) {
     val turnManager = activity.turnManager                    // TurnManager (State.LISTENING, SPEAKING, etc.)
     val sessionManager = activity.sessionManager              // RealtimeSessionManager
     val sessionController = activity.sessionController        // ChatSessionController
+    val settingsViewModel: SettingsViewModel by activity.viewModels()
 
     // Tools & App Settings
     val keyManager = activity.keyManager
@@ -34,13 +35,8 @@ class ChatActivityAdapter(private val activity: ChatActivity) {
 
     fun restartSession() {
         activity.runOnUiThread {
-            activity.viewModel.startNewSession()
-        }
-    }
-
-    fun updateRealtimeSession() {
-        activity.runOnUiThread {
-            activity.sessionManager.updateSession()
+            viewModel.startNewSession()
+            settingsViewModel.consumeRestartSessionEvent()
         }
     }
 
@@ -64,17 +60,18 @@ class ChatActivityAdapter(private val activity: ChatActivity) {
     }
 
     // Adapted version of "onMicrophoneToggle" for website
-    fun toggleMicrophone() {
+    fun toggleMicrophone(userWantsMicOn: Boolean) {
         try {
-            val newIntent = !activity.viewModel.userWantsMicOn.value
-            activity.viewModel.setUserWantsMicOn(newIntent)
-            Log.i(TAG, "Mic intent toggled: userWantsMicOn=$newIntent")
+
+            if (activity.viewModel.userWantsMicOn.value != userWantsMicOn) {
+                activity.viewModel.setUserWantsMicOn(userWantsMicOn)
+            }
 
             val currentState = activity.chatDeps.turnManager.state
 
             // If currently LISTENING, apply immediately
             if (currentState == TurnManager.State.LISTENING) {
-                if (newIntent) {
+                if (userWantsMicOn) {
                     activity.unmuteMicrophone()
                 } else {
                     activity.muteMicrophone()

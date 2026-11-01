@@ -93,10 +93,17 @@ object ProxySettingsRepository {
 
     var customSystemPrompt: String
         get() = getPref(Settings.SYSTEM_PROMPT, "")
-        set(value) = appPrefs.edit().putString(Settings.SYSTEM_PROMPT, value).apply()
+        set(value) = setPref(Settings.SYSTEM_PROMPT, value)
 
     val activeSystemPrompt: String
-        get() = customSystemPrompt.ifEmpty { defaultSystemPrompt }
+        get() {
+            val current = customSystemPrompt
+            return if (current.isBlank() || current.trim() == "You are a helpful assistant.") {
+                defaultSystemPrompt
+            } else {
+                current
+            }
+        }
 
     val defaultSystemPrompt: String
         get() = try {
@@ -124,7 +131,7 @@ object ProxySettingsRepository {
             val knownTools = appPrefs.getStringSet(KEY_KNOWN_TOOLS, null)
 
             return if (savedTools == null) {
-                appPrefs.edit().putStringSet(KEY_KNOWN_TOOLS, customTools).apply()
+                appPrefs.edit { putStringSet(KEY_KNOWN_TOOLS, customTools) }
                 customTools
             } else {
                 val newTools = customTools.filter { it !in (knownTools ?: emptySet()) }
@@ -132,8 +139,9 @@ object ProxySettingsRepository {
                     val mergedTools = HashSet(savedTools)
                     for (newTool in newTools) {
                         mergedTools.add(newTool)
+                        Log.i("ProxySettingsRepository", "Auto-enabling new tool: $newTool")
                     }
-                    appPrefs.edit().putStringSet(KEY_KNOWN_TOOLS, customTools).apply()
+                    appPrefs.edit { putStringSet(KEY_KNOWN_TOOLS, customTools) }
                     enabledTools = mergedTools
                     mergedTools
                 } else {
@@ -141,7 +149,7 @@ object ProxySettingsRepository {
                 }
             }
         }
-        set(value) = appPrefs.edit().putStringSet(KEY_ENABLED_TOOLS, value).apply()
+        set(value) = appPrefs.edit { putStringSet(KEY_ENABLED_TOOLS, value) }
 
     val standardTools: Set<String>
         get() = ToolRegistry().getAllToolNames()

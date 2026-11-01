@@ -57,7 +57,7 @@ class ToolInterceptor {
 
         val arguments = JSONObject(toolArgs ?: "{}")
 
-        val localResult = attemptExecution(toolName, arguments, AraWisperManager.currentChatActivity?.toolContext, currentContext)
+        val localResult = attemptExecution(toolName, arguments, AraWisperManager.chatActivityAdapter?.toolContext, currentContext)
 
         return if (localResult != null) {
             // Tool executed locally, update context and continue loop

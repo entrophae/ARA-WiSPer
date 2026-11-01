@@ -337,8 +337,7 @@ input:checked + .slider-round:before {
 
 .tool-header {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    gap: 1em;
 }
 
 .tool-checkbox {

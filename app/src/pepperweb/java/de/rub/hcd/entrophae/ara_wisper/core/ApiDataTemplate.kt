@@ -7,7 +7,9 @@ import ch.fhnw.pepper_realtime.manager.ApiKeyManager
 import ch.fhnw.pepper_realtime.manager.SettingsRepository
 import ch.fhnw.pepper_realtime.network.RealtimeApiProvider
 import ch.fhnw.pepper_realtime.tools.ToolRegistry
+import com.google.gson.Gson
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appString
+import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperToolRegistry
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import org.json.JSONArray
 import org.json.JSONObject
@@ -105,7 +107,6 @@ object ApiDataTemplate {
     }
 
     object System : SettingGroup() {
-        val PROMPT_OVERRIDE = SettingKey(ProxySettingsRepository.Settings.SYSTEM_PROMPT, labelRes = R.string.label_system_prompt, type = "modal_textarea", default = ProxySettingsRepository.defaultSystemPrompt)
         val ROUTING_MODE = SettingKey(ProxySettingsRepository.Settings.SYSTEM_ROUTING_MODE, labelRes = R.string.label_routing_mode, type = "options", options = ProxySettingsRepository.Modes.ROUTING.OPTIONS, default = ProxySettingsRepository.Modes.ROUTING.CUSTOM)
         val AUDIO_MODE = SettingKey(ProxySettingsRepository.Settings.SYSTEM_AUDIO_MODE, labelRes = R.string.label_audio_mode, type = "options", options = ProxySettingsRepository.Modes.AUDIO.OPTIONS, default = ProxySettingsRepository.Modes.AUDIO.CUSTOM)
     }
@@ -118,8 +119,10 @@ object ApiDataTemplate {
      * Builds dynamic schema for the app controls present in SettingsScreen.kt
      */
     fun buildAppDynamicSchema(context: Context): JSONObject {
+        val gson = Gson()
         val apiKeyManager = ApiKeyManager(context)
-        val toolRegistry = ToolRegistry()
+        val customToolRegistry = AraWisperToolRegistry()
+        val nativeToolRegistry = ToolRegistry()
 
         val configuredProviders = apiKeyManager.getConfiguredProviders().toList()
         val providersToUse = configuredProviders.ifEmpty { AppSettingsDefaults.providers }
@@ -139,11 +142,14 @@ object ApiDataTemplate {
         }
 
         val toolsList = JSONArray()
-        toolRegistry.getAllToolNames().forEach { toolName ->
-            val tool = toolRegistry.getOrCreateTool(toolName)
+        val allToolNames = nativeToolRegistry.getAllToolNames() + customToolRegistry.getAllToolNames()
+        allToolNames.forEach { toolName ->
+            val tool =
+                if (ProxySettingsRepository.isStandardTool(toolName)) nativeToolRegistry.getOrCreateTool(toolName)
+                else customToolRegistry.getOrCreateTool(toolName)
             val desc = tool?.getDefinition()?.optString("description", "No description") ?: "No description"
             val (reqKey, isAvail) = when (toolName) {
-                "analyze_vision" -> "Groq" to apiKeyManager.isVisionAnalysisAvailable()
+                "analyze_vision" -> "VLM/Groq/gpt-realtime" to ProxySettingsRepository.isVisionAnalysisAvailable(apiKeyManager)
                 "search_internet" -> "Tavily" to apiKeyManager.isInternetSearchAvailable()
                 "get_weather" -> "OpenWeatherMap" to apiKeyManager.isWeatherAvailable()
                 "play_youtube_video" -> "YouTube" to apiKeyManager.isYouTubeAvailable()
@@ -172,11 +178,12 @@ object ApiDataTemplate {
                 put(RealtimeApiProvider.GOOGLE_GEMINI.name, JSONObject(AppSettingsDefaults.googleVoices as Map<*, *>))
             })
             put("languages", JSONArray(languages))
-            put("audioInputModes", JSONArray(AppSettingsDefaults.audioInputModes))
+
+            put("audioInputModes", JSONArray(gson.toJson(AppSettingsDefaults.audioInputModes)))
             put("transcriptionModels", JSONArray(AppSettingsDefaults.transcriptionModels))
-            put("turnDetectionTypes", JSONArray(AppSettingsDefaults.turnDetectionTypes))
-            put("eagernessLevels", JSONArray(AppSettingsDefaults.eagernessLevels))
-            put("noiseReductionTypes", JSONArray(AppSettingsDefaults.noiseReductionTypes))
+            put("eagernessLevels", JSONArray(gson.toJson(AppSettingsDefaults.eagernessLevels)))
+            put("noiseReductionTypes", JSONArray(gson.toJson(AppSettingsDefaults.noiseReductionTypes)))
+            put("turnDetectionTypes", JSONArray(gson.toJson(AppSettingsDefaults.turnDetectionTypes)))
             put("availableTools", toolsList)
         }
     }

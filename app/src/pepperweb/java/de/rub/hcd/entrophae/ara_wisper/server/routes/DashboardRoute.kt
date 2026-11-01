@@ -7,7 +7,6 @@ import ch.fhnw.pepper_realtime.ui.ChatMessage
 import ch.fhnw.pepper_realtime.ui.ChatViewModel
 import com.google.gson.Gson
 import de.rub.hcd.entrophae.ara_wisper.core.ApiDataTemplate
-import de.rub.hcd.entrophae.ara_wisper.core.ChatActivityAdapter
 import de.rub.hcd.entrophae.ara_wisper.core.SettingsAdapter
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
@@ -168,12 +167,7 @@ fun Route.dashboardRouting(viewModel: ChatViewModel) {
 }
 
 private suspend fun DefaultWebSocketServerSession.sendInitialApiKeys() {
-    val prefs = AraWisperManager.appPrefs
-
-    val activity = AraWisperManager.currentChatActivity
-    val adapter = activity?.let { ChatActivityAdapter(it) }
-
-    val dataObj = SettingsAdapter.readAllAsJson(prefs, adapter)
+    val dataObj = SettingsAdapter.readAllAsJson()
 
     val schemaObj = JSONObject().apply {
         put("models", ApiDataTemplate.Models.toUiSchema())
@@ -270,15 +264,9 @@ private fun processChatCommand(json: JSONObject, viewModel: ChatViewModel) {
     }
 }
 private fun processToggleMute(json: JSONObject) {
-    val activity = AraWisperManager.currentChatActivity
-    val adapter = activity?.let { ChatActivityAdapter(it) }
-
     val userWantsMicOn = json.optBoolean("data", false)
-    AraWisperManager.appPrefs.edit {
-        putBoolean(Settings.MIC_STATUS, userWantsMicOn)
-    }
 
-    adapter?.toggleMicrophone()
+    AraWisperManager.chatActivityAdapter?.toggleMicrophone(userWantsMicOn)
 }
 
 private suspend fun processSetUser(json: JSONObject, viewModel: ChatViewModel) {
@@ -366,30 +354,21 @@ private suspend fun processUpdateUserKnowledge(json: JSONObject, viewModel: Chat
 
 private suspend fun DefaultWebSocketServerSession.processSaveKeys(json: JSONObject, viewModel: ChatViewModel) {
     val data = json.getJSONObject("data")
-    val prefs = AraWisperManager.appPrefs
-    val activity = AraWisperManager.currentChatActivity
-    val adapter = activity?.let { ChatActivityAdapter(it) }
 
-    SettingsAdapter.saveJsonToPrefs(prefs, data, adapter)
+    SettingsAdapter.saveJsonToPrefs(data)
 
     val successMsg = WebSocketPayloads.dashboardPayload(ProxySettingsRepository.Dashboard.Events.STATUS_UPDATE,"Settings saved!")
     sendJsonToClient(successMsg)
 }
 
 private suspend fun DefaultWebSocketServerSession.processRestart() {
-    val activity = AraWisperManager.currentChatActivity
-    val adapter = activity?.let { ChatActivityAdapter(it) }
-
-    adapter?.restartSession()
+    AraWisperManager.chatActivityAdapter?.restartSession()
 
     val successMsg = WebSocketPayloads.dashboardPayload(ProxySettingsRepository.Dashboard.Events.STATUS_UPDATE,"Restarting connection")
     sendJsonToClient(successMsg)
 }
 private suspend fun DefaultWebSocketServerSession.processInterrupt() {
-    val activity = AraWisperManager.currentChatActivity
-    val adapter = activity?.let { ChatActivityAdapter(it) }
-
-    adapter?.interruptSpeech()
+    AraWisperManager.chatActivityAdapter?.interruptSpeech()
 
     val successMsg = WebSocketPayloads.dashboardPayload(ProxySettingsRepository.Dashboard.Events.STATUS_UPDATE,"Speech interrupted")
     sendJsonToClient(successMsg)
