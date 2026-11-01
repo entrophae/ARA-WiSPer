@@ -33,7 +33,7 @@ class AraWisperToolRegistry {
         toolFactories[name] = factory
     }
 
-    private fun getOrCreateTool(name: String): Tool? {
+    fun getOrCreateTool(name: String): Tool? {
         toolCache[name]?.let { return it }
 
         val factory = toolFactories[name]

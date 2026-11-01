@@ -21,9 +21,9 @@ const app = createApp({
             });
             if (success) {
                 this.commandInput = '';
-                this.logMessage('Manual command sent', 'log-system');
+                this.store.logMessage('Manual command sent', 'log-system');
             } else {
-                this.logMessage('ERROR: Cannot save settings. Robot is disconnected!', 'log-error');
+                this.store.logMessage('ERROR: Cannot send command. Robot is disconnected!', 'log-error');
             }
         },
         promptNewUser() {

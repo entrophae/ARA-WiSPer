@@ -133,7 +133,7 @@ class ToolInterceptor {
 
         val isVisionResult = !userImageUrl.isNullOrBlank()
         val instructions = if (isVisionResult) {
-            "Das obige Tool-Ergebnis stammt von einer Kameraaufnahme."
+            "Ein Foto wurde aufgenommen und dieser Nachricht als Bild angehängt. Schau dir das angehängte Bild genau an und beantworte die ursprüngliche Anfrage basierend auf dem, was du auf dem Bild siehst."
         } else {
             "Beantworte die ursprüngliche Anfrage basierend auf der System-Info."
         }
@@ -147,7 +147,7 @@ class ToolInterceptor {
             $toolAnswer 
             
             ## WICHTIGE ANWEISUNG:
-            Beantworte die ursprüngliche Anfrage basierend auf der System-Info.
+            $instructions
             Du MUSST deine Antwort auf der Sprache der ursprünglichen Anfrage formulieren (übersetze die System-Info falls nötig).
         """.trimIndent()
     }

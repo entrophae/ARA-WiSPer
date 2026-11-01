@@ -29,13 +29,13 @@
                 <div class="status-badge" :class="{ connected: store.isRAGConnected }">
                     RAG Agent
                 </div>
-                <div class="status-badge" :class="{ connected: store.isLLMConnected }">
+                <div class="status-badge" :class="{ connected: store.isLLMConfigured }">
                     LLM
                 </div>
-                <div class="status-badge" :class="{ connected: store.isVLMConnected }">
+                <div class="status-badge" :class="{ connected: store.isVLMConfigured }">
                     VLM
                 </div>
-                <div class="status-badge" :class="{ connected: store.isELMConnected }">
+                <div class="status-badge" :class="{ connected: store.isELMConfigured }">
                     ELM
                 </div>
             </div>

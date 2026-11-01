@@ -224,15 +224,15 @@ const appStore = reactive({
         // Check VLM (Vision) Configuration
         if (this.apiData.CUSTOM_VLM_ENDPOINT && this.apiData.CUSTOM_VLM_KEY) {
             const modelId = getModelId(this.apiData.CUSTOM_VLM_CONFIG);
-            this.isVLMConfigure = await ApiService.probeModelCapability(modelId, 'vision', 'CUSTOM_VLM_CONFIG');
+            this.isVLMConfigured = await ApiService.probeModelCapability(modelId, 'vision', 'CUSTOM_VLM_CONFIG');
         } else {
-            this.isVLMConfigure = false;
+            this.isVLMConfigured = false;
         }
 
         // Check ELM (Embedding) Configuration
         if (this.apiData.CUSTOM_EMBEDDING_ENDPOINT && this.apiData.CUSTOM_EMBEDDING_KEY) {
             const modelId = getModelId(this.apiData.CUSTOM_EMBEDDING_CONFIG);
-            this.isELMConfigured = await ApiService.probeModelCapability(modelId, 'embedding', 'CUSTOM_EMBEDDING_CONFIG');
+            this.isELMConfigured = await ApiService.probeModelCapability(modelId, 'embed', 'CUSTOM_EMBEDDING_CONFIG');
         } else {
             this.isELMConfigured = false;
         }

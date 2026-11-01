@@ -227,6 +227,13 @@ object LlmClient {
                     }))
                     put("tools", "tools-not-array")
                 }
+                "text" -> {
+                    put("messages", JSONArray().put(JSONObject().apply {
+                        put("role", "user")
+                        put("content", "ping")
+                    }))
+                    put("max_tokens", 1)
+                }
             }
         }
 

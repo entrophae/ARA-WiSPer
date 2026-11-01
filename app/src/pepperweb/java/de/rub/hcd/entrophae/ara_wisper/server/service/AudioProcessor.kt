@@ -38,7 +38,6 @@ class AudioProcessor(
             }
             framesEvaluated++
         }
-        AraWisperManager.applyMuteState()
 
         val effectivelySpeaking = if (framesEvaluated > 0) hasSpeech else isSpeaking
 

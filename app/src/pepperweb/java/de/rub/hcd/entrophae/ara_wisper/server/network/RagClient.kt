@@ -3,6 +3,7 @@ package de.rub.hcd.entrophae.ara_wisper.server.network
 import android.util.Log
 import ch.fhnw.pepper_realtime.network.HttpClientManager
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
+import io.ktor.utils.io.errors.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -36,8 +37,15 @@ object RagClient {
                 .build()
             client.newCall(request).execute().use { response ->
                 Log.i("RAG HEALTH", response.toString())
+
+                val contentType = response.header("Content-Type") ?: ""
+
+                if (contentType.contains("text/html")) {
+                    throw IOException("Intercepted by Shibboleth SSO instead of target endpoint")
+                }
+
                 if (response.isSuccessful && response.body != null) {
-                    return@withContext  response.body!!.string()
+                    return@withContext response.body!!.string()
                 }
             }
         } catch (e: Exception) {

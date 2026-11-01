@@ -1,6 +1,10 @@
 package de.rub.hcd.entrophae.ara_wisper.core
 
 import android.util.Log
+import androidx.activity.viewModels
+import androidx.core.content.ContextCompat.getString
+import androidx.lifecycle.ViewModelProvider
+import ch.fhnw.pepper_realtime.R
 import ch.fhnw.pepper_realtime.manager.SettingsRepository
 import ch.fhnw.pepper_realtime.manager.TurnManager
 import ch.fhnw.pepper_realtime.ui.ChatActivity

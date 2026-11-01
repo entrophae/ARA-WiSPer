@@ -5,6 +5,7 @@ import ch.fhnw.pepper_realtime.manager.SettingsRepository
 import ch.fhnw.pepper_realtime.tools.ToolRegistry
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appPrefs
 import androidx.core.content.edit
+import ch.fhnw.pepper_realtime.manager.ApiKeyManager
 
 object ProxySettingsRepository {
     const val PREFS_NAME = "PepperDialogPrefs"
@@ -61,6 +62,8 @@ object ProxySettingsRepository {
     val customVlmHasTools: Boolean get() = getModelConfig(Settings.VLM_CONFIG).optBoolean("hasTools", false)
     val customVlmHasVisuals: Boolean get() = getModelConfig(Settings.VLM_CONFIG).optBoolean("hasVision", false)
     val customVlmHasEmbedding: Boolean get() = getModelConfig(Settings.VLM_CONFIG).optBoolean("hasEmbedding", false)
+
+    fun isVisionAnalysisAvailable(apiKeyManager: ApiKeyManager): Boolean = customVlmHasVisuals || getPref(Settings.GROQ_KEY).isNotEmpty() || apiKeyManager.isVisionAnalysisAvailable()
 
     val customEmbeddingEndpoint: String
         get() = getPref(Settings.EMBEDDING_ENDPOINT, "")

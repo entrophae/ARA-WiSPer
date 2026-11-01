@@ -221,7 +221,7 @@ const ExperimentManagerModal = {
             if (!confirm('Are you sure you want to delete this entire experiment? This will permanently wipe all ingested files, vectors, and knowledge.')) {
                 return;
             }
-            await appStore.deleteExperiment(expId, fileName);
+            await appStore.deleteExperiment(expId);
         }
     }
 };

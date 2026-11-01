@@ -67,6 +67,11 @@ class ProxyPipelineManager(
     }
 
     fun handleAudioAppend(json: JSONObject){
+        // AraWisperManager.applyMuteState()
+        if (AraWisperManager.chatActivityAdapter?.audioInputController?.isMuted == true) {
+            return
+        }
+
         val audioData = json.optString(ProxySettingsRepository.Proxy.Keys.AUDIO)
         if (audioData.isBlank()) return
         try {

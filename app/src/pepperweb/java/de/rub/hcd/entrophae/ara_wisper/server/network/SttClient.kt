@@ -9,6 +9,7 @@ import de.rub.hcd.entrophae.ara_wisper.server.service.AudioProcessor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import io.ktor.utils.io.errors.IOException
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -30,12 +31,19 @@ object SttClient {
                 .build()
             client.newCall(request).execute().use { response ->
                 Log.i("STT HEALTH", response.toString())
+
+                val contentType = response.header("Content-Type") ?: ""
+
+                if (contentType.contains("text/html")) {
+                    throw IOException("Intercepted by Shibboleth SSO instead of target endpoint")
+                }
+
                 if (response.isSuccessful && response.body != null) {
-                    return@withContext  response.body!!.string()
+                    return@withContext response.body!!.string()
                 }
             }
         } catch (e: Exception) {
-            Log.e(ProxySettingsRepository.TAG, "RAG Status Error: ${e.message}")
+            Log.e(ProxySettingsRepository.TAG, "STT Status Error: ${e.message}")
         }
         return@withContext """{"status":"error"}"""
 
