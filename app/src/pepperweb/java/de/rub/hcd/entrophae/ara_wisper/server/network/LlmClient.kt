@@ -49,7 +49,22 @@ object LlmClient {
                 if (turn.userQuery.isNotBlank()) {
                     put(JSONObject().apply {
                         put("role", "user")
-                        put("content", turn.userQuery)
+                        if (!turn.userImageUrl.isNullOrBlank()) {
+                            put("content", JSONArray().apply {
+                                put(JSONObject().apply {
+                                    put("type", "text")
+                                    put("text", turn.userQuery)
+                                })
+                                put(JSONObject().apply {
+                                    put("type", "image_url")
+                                    put("image_url", JSONObject().apply {
+                                        put("url", turn.userImageUrl)
+                                    })
+                                })
+                            })
+                        } else {
+                            put("content", turn.userQuery)
+                        }
                     })
                 }
                 if (turn.llmResponse.isNotBlank()) {
