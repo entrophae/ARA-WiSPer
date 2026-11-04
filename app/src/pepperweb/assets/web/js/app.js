@@ -36,7 +36,11 @@ const app = createApp({
     async mounted() {
         await this.store.initializeStore();
         this.store.connectWebSocket();
-        await this.store.checkStatus();
+        await this.store.checkDBStatus();
+        // DB is needed but the rest can be silently called
+        this.store.checkRAGStatus();
+        this.store.checkSTTStatus();
+        this.store.checkConfigStatus();
         if (this.store.isDBConnected == true) {
             await this.store.fetchUsers();
             await this.store.fetchExperiments();

@@ -189,9 +189,7 @@ const appStore = reactive({
             }
         };
     },
-
-    async checkStatus() {
-        // Check DB
+    async checkDBStatus() {
         try {
             await ApiService.getStatus(this.constants.ROUTE_STATUS_DB, "Database service");
             this.isDBConnected = true;
@@ -199,8 +197,8 @@ const appStore = reactive({
             this.isDBConnected = false;
             this.logMessage('Database service is offline.', 'log-error');
         }
-
-        // Check RAG agent
+    },
+    async checkRAGStatus() {
         try {
             await ApiService.getStatus(this.constants.ROUTE_STATUS_RAG, "RAG agent");
             this.isRAGConnected = true;
@@ -208,8 +206,8 @@ const appStore = reactive({
             this.isRAGConnected = false;
             this.logMessage('RAG agent is offline.', 'log-error');
         }
-
-        // Check STT
+    },
+    async checkSTTStatus() {
         try {
             await ApiService.getStatus(this.constants.ROUTE_STATUS_STT, "STT service");
             this.isSTTConnected = true;
@@ -217,7 +215,8 @@ const appStore = reactive({
             this.isSTTConnected = false;
             this.logMessage('STT service is offline.', 'log-error');
         }
-
+    },
+    async checkConfigStatus() {
         const getModelId = (configStr) => {
             try { return JSON.parse(configStr || '{}').id || ''; }
             catch (e) { return configStr || ''; }
