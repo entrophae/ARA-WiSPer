@@ -268,6 +268,7 @@ object ProxySettingsRepository {
             const val CHAT_UPDATE = "CHAT_UPDATE"
             const val CHAT_SYNC = "CHAT_SYNC"
             const val CHAT_COMMAND = "CHAT_COMMAND"
+            const val SPEAK_COMMAND = "SPEAK_COMMAND"
             const val MIC_ACTIVITY = "MIC_ACTIVITY"
             const val TOGGLE_MUTE = "TOGGLE_MUTE"
             const val RESTART = "RESTART"

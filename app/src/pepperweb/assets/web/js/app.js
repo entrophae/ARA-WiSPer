@@ -6,22 +6,39 @@ const app = createApp({
             showSettings: false,
             showUserEdit: false,
             showExperimentManager: false,
-            commandInput: '',
+            speakInput: '',
+            promptInput: '',
             store: appStore
         };
     },
     methods: {
-        sendCommand() {
-            const text = this.commandInput.trim();
+        sendSpeak() {
+            const text = this.speakInput.trim();
             if (!text || !this.store.isConnected) return;
+            const success = ApiService.sendSocketMessage(this.store.socket, {
+                type: this.store.constants.MSG_SPEAK_COMMAND,
+                apiMode: this.store.apiMode,
+                llmMode: this.store.isLLMMode,
+                text: text
+            });
+            if (success) {
+                this.speakInput = '';
+                this.store.logMessage('Manual speak sent', 'log-system');
+            } else {
+                this.store.logMessage('ERROR: Cannot send command. Robot is disconnected!', 'log-error');
+            }
+        },
+        sendPrompt() {
+            const text = this.promptInput.trim();
+            if (!text || !this.store.isConnected && !this.store.isLLMConfigured) return;
             const success = ApiService.sendSocketMessage(this.store.socket, {
                 type: this.store.constants.MSG_CHAT_COMMAND,
                 apiMode: this.store.apiMode,
                 text: text
             });
             if (success) {
-                this.commandInput = '';
-                this.store.logMessage('Manual command sent', 'log-system');
+                this.promptInput = '';
+                this.store.logMessage('Manual prompt sent', 'log-system');
             } else {
                 this.store.logMessage('ERROR: Cannot send command. Robot is disconnected!', 'log-error');
             }

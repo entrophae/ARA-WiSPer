@@ -28,6 +28,8 @@ fun Route.constantsRouting(viewModel: ChatViewModel) {
 
             "MSG_${ProxySettingsRepository.Dashboard.Events.CHAT_COMMAND}" to ProxySettingsRepository.Dashboard.Events.CHAT_COMMAND,
 
+            "MSG_${ProxySettingsRepository.Dashboard.Events.SPEAK_COMMAND}" to ProxySettingsRepository.Dashboard.Events.SPEAK_COMMAND,
+
             "MSG_${ProxySettingsRepository.Dashboard.Events.MIC_ACTIVITY}" to ProxySettingsRepository.Dashboard.Events.MIC_ACTIVITY,
 
             "MSG_${ProxySettingsRepository.Dashboard.Events.TOGGLE_MUTE}" to ProxySettingsRepository.Dashboard.Events.TOGGLE_MUTE,

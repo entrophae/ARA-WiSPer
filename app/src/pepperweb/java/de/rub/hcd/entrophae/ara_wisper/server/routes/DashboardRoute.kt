@@ -221,6 +221,9 @@ private suspend fun DefaultWebSocketServerSession.handleDashboardCommand(rawJson
             ProxySettingsRepository.Dashboard.Events.CHAT_COMMAND -> {
                 processChatCommand(json, viewModel)
             }
+            ProxySettingsRepository.Dashboard.Events.SPEAK_COMMAND -> {
+                processSpeakCommand(json, viewModel)
+            }
             ProxySettingsRepository.Dashboard.Events.SET_USER -> {
                 processSetUser(json, viewModel)
             }
@@ -266,6 +269,48 @@ private fun processChatCommand(json: JSONObject, viewModel: ChatViewModel) {
         viewModel.sendMessageToRealtimeAPI(taggedText, requestResponse = true, allowInterrupt = true)
     }
 }
+
+private fun processSpeakCommand(json: JSONObject, viewModel: ChatViewModel) {
+    val apiMode = json.optString("apiMode")
+    val llmMode = json.optBoolean("llmMode")
+    val text = json.optString("text")
+
+    val robotMsg = ChatMessage(text, ChatMessage.Sender.ROBOT)
+    viewModel.addMessage(robotMsg)
+
+    if (llmMode && apiMode == ProxySettingsRepository.Modes.ROUTING.CUSTOM) {
+        AraWisperManager.speechManager.processTextChunk(text)
+
+        val turn = ChatTurn(
+            userId = ProxySettingsRepository.activeUserId,
+            turnId = "manual_speak_${System.currentTimeMillis()}",
+            userQuery = "",
+            llmResponse = text
+        )
+        CoroutineScope(Dispatchers.IO).launch {
+            DataBaseClient.updateHistory(turn)
+            DashboardManager.syncHistoryToBrowser(turn.userId)
+        }
+    }
+    else if (llmMode) {
+        viewModel.sendMessageToRealtimeAPI(text, requestResponse = false, allowInterrupt = true)
+    }
+    else {
+        AraWisperManager.speechManager.processTextChunk(text)
+
+        val turn = ChatTurn(
+            userId = ProxySettingsRepository.activeUserId,
+            turnId = "manual_speak_${System.currentTimeMillis()}",
+            userQuery = "",
+            llmResponse = text
+        )
+        CoroutineScope(Dispatchers.IO).launch {
+            DataBaseClient.updateHistory(turn)
+            DashboardManager.syncHistoryToBrowser(turn.userId)
+        }
+    }
+}
+
 private fun processToggleMute(json: JSONObject) {
     val userWantsMicOn = json.optBoolean("data", false)
 

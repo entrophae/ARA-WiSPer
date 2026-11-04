@@ -127,7 +127,7 @@ FORM CONTROLS & BUTTONS
     display: flex;
     flex-direction: row;
     gap: 0.5em;
-    flex: 1 1 0;
+    flex-wrap: wrap;
 }
 
 .input-wrapper {
@@ -146,7 +146,6 @@ FORM CONTROLS & BUTTONS
 }
 
 input[type="text"], input[type="password"], input[type="url"], select {
-    width: 100%;
     padding: 0.75rem;
     border: 1px solid var(--border-color);
     border-radius: 6px;

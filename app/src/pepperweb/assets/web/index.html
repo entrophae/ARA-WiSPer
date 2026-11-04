@@ -69,8 +69,9 @@
                     <button @click="sendPrompt">Send</button>
                 </div>
                 <div class="control-group">
-                    <input type="text" v-model="commandInput" @keyup.enter="sendCommand" placeholder="Enter command or RAG query..." autocomplete="off">
-                    <button @click="sendCommand">Send</button>
+                    <p class="subtitle">Speak as Robot</p>
+                    <input type="text" v-model="speakInput" @keyup.enter="sendSpeak" placeholder="Enter text to speak..." autocomplete="off">
+                    <button @click="sendSpeak">Send</button>
                 </div>
             </div>
             <div id="traffic">
