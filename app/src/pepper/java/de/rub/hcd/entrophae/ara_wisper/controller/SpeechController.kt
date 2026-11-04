@@ -1,18 +1,16 @@
 package de.rub.hcd.entrophae.ara_wisper.controller
 
-import android.content.Context
 import android.util.Log
 import com.aldebaran.qi.Future
-import com.aldebaran.qi.sdk.QiContext
 import com.aldebaran.qi.sdk.builder.SayBuilder
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
-class SpeechController(private val context: Context) {
+class SpeechController {
     private val sentenceBuffer = java.lang.StringBuilder()
     private var activeSayFuture: Future<Void>? = null
 
-    fun processTextChunk(qiContextAny: Any?, text: String, onPcmReady: ((ByteArray) -> Unit)?) {
+    fun processTextChunk(text: String, onPcmReady: ((ByteArray) -> Unit)?) {
         if (text.isBlank()) return
 
         sentenceBuffer.append(text)
@@ -27,14 +25,17 @@ class SpeechController(private val context: Context) {
         if (lastPunctuation != -1) {
             val sentenceToSpeak = currentText.substring(0, lastPunctuation + 1)
             sentenceBuffer.delete(0, lastPunctuation + 1)
-            speakSentence(qiContextAny, sentenceToSpeak, onPcmReady)
+            speakSentence(sentenceToSpeak, onPcmReady)
+        } else {
+            sentenceBuffer.delete(0, text.length)
+            speakSentence(currentText, onPcmReady)
         }
     }
 
-    fun flush(qiContextAny: Any?, onPcmReady: ((ByteArray) -> Unit)?, onComplete: (() -> Unit)? = null) {
+    fun flush(onPcmReady: ((ByteArray) -> Unit)?, onComplete: (() -> Unit)? = null) {
         val leftoverText = sentenceBuffer.toString()
         if (leftoverText.isNotBlank()) {
-            speakSentence(qiContextAny, leftoverText, onPcmReady)
+            speakSentence(leftoverText, onPcmReady)
             sentenceBuffer.clear()
         }
 
@@ -47,10 +48,10 @@ class SpeechController(private val context: Context) {
             }
         }
     }
-    private fun speakSentence(qiContextAny: Any?, sentence: String, onPcmReady: ((ByteArray) -> Unit)?) {
+    private fun speakSentence(sentence: String, onPcmReady: ((ByteArray) -> Unit)?) {
         if (sentence.isBlank()) return
         try {
-            val qiContext = qiContextAny as? QiContext ?: return
+            val qiContext = AraWisperManager.chatActivityAdapter?.toolContext?.qiContext ?: return
             val sayAction = SayBuilder.with(qiContext).withText(sentence.trim()).build()
 
             val currentFuture = activeSayFuture

@@ -41,7 +41,7 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
 
     fun init(application: Application) {
         app = application
-        speechManager = SpeechManager(app)
+        speechManager = SpeechManager()
     }
 
     val appContext: Context

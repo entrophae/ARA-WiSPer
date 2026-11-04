@@ -3,12 +3,13 @@ package de.rub.hcd.entrophae.ara_wisper.controller
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.util.Log
+import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.collections.remove
 
-class SpeechController(private val context: Context) {
+class SpeechController {
     private val lock = Any()
     private val sentenceBuffer = java.lang.StringBuilder()
     private var textToSpeech: TextToSpeech? = null
@@ -18,7 +19,7 @@ class SpeechController(private val context: Context) {
     private var onFlushComplete: (() -> Unit)? = null
 
     init {
-        textToSpeech = TextToSpeech(context) { status ->
+        textToSpeech = TextToSpeech(AraWisperManager.appContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 val result = textToSpeech?.setLanguage(Locale.GERMAN)
                 if (result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED) {
@@ -74,7 +75,8 @@ class SpeechController(private val context: Context) {
         }
     }
 
-    fun processTextChunk(qiContextAny: Any?, text: String, onPcmReady: ((ByteArray) -> Unit)?) {
+    fun processTextChunk( text: String, onPcmReady: ((ByteArray) -> Unit)?) {
+        Log.i("SPEAK", text)
         if (text.isBlank()) return
 
         sentenceBuffer.append(text)
@@ -89,14 +91,17 @@ class SpeechController(private val context: Context) {
         if (lastPunctuation != -1) {
             val sentenceToSpeak = currentText.substring(0, lastPunctuation + 1)
             sentenceBuffer.delete(0, lastPunctuation + 1)
-            speakSentence(qiContextAny, sentenceToSpeak, onPcmReady)
+            speakSentence(sentenceToSpeak, onPcmReady)
+        } else {
+            sentenceBuffer.delete(0, text.length)
+            speakSentence(currentText, onPcmReady)
         }
     }
 
-    fun flush(qiContextAny: Any?, onPcmReady: ((ByteArray) -> Unit)?, onComplete: (() -> Unit)? = null) {
+    fun flush(onPcmReady: ((ByteArray) -> Unit)?, onComplete: (() -> Unit)? = null) {
         val leftoverText = sentenceBuffer.toString()
         if (leftoverText.isNotBlank()) {
-            speakSentence(qiContextAny, leftoverText, onPcmReady)
+            speakSentence(leftoverText, onPcmReady)
             sentenceBuffer.clear()
         }
 
@@ -109,12 +114,12 @@ class SpeechController(private val context: Context) {
         }
     }
 
-    private fun speakSentence(qiContextAny: Any?, sentence: String, onPcmReady: ((ByteArray) -> Unit)?) {
+    private fun speakSentence(sentence: String, onPcmReady: ((ByteArray) -> Unit)?) {
         if (!isTtsInitialized || textToSpeech == null || sentence.isBlank()) return
         val cleanText = sentence.replace("*", "").replace(Regex("[\\x{10000}-\\x{10FFFF}]"), "")
 
         if (onPcmReady != null) {
-            val tempFile = File(context.cacheDir, "tts_${System.nanoTime()}.wav")
+            val tempFile = File(AraWisperManager.appContext.cacheDir, "tts_${System.nanoTime()}.wav")
             val utteranceId = "utterance_${System.nanoTime()}"
 
             pendingTtsTasks[utteranceId] = Pair(tempFile, onPcmReady)

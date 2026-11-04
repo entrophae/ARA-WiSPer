@@ -356,8 +356,7 @@ class ProxyPipelineManager(
     private suspend fun processLlmText(llmText: String, pipelineContext: PipelineContext, isThinkingText: Boolean = false) {
         if (llmText.isNotBlank()) {
             pipelineContext.sendTranscriptDelta(llmText)
-            val qiContextAny = AraWisperManager.chatActivityAdapter?.toolContext?.qiContext
-            AraWisperManager.speechManager.processTextChunk(qiContextAny, llmText) { pcmBytes ->
+            AraWisperManager.speechManager.processTextChunk(llmText) { pcmBytes ->
 
                 this.currentTurn?.audioBuffer?.write(pcmBytes)
                 val base64Audio = Base64.encodeToString(pcmBytes, Base64.NO_WRAP)
@@ -373,10 +372,8 @@ class ProxyPipelineManager(
     }
 
     private suspend fun finalizePipelineTurn(pipelineContext: PipelineContext) {
-        val qiContext = AraWisperManager.chatActivityAdapter?.toolContext?.qiContext
-
         // Flush speech engine and wait until all TTS/Qi audio processing is complete
-        AraWisperManager.speechManager.flush(qiContext) { pcmBytes ->
+        AraWisperManager.speechManager.flush() { pcmBytes ->
             currentTurn?.audioBuffer?.write(pcmBytes)
             val base64Audio = Base64.encodeToString(pcmBytes, Base64.NO_WRAP)
             serverScope.launch {
