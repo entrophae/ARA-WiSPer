@@ -47,7 +47,7 @@ async def root(request: Request):
         name="index.html",
         context={"base_path": PROXY_PATH}
     )
-    
+
 @app.on_event("startup")
 async def startup_event():
     global db_pool
@@ -158,6 +158,19 @@ async def startup_event():
             ''')
     except Exception as e:
         print(f"🔴 Database connection failed: {e}")
+
+
+@app.get("/api/status")
+async def get_status_api():
+    if not db_pool:
+        return {"status": "offline", "error": "Database pool not initialized"}
+
+    try:
+        async with db_pool.acquire() as conn:
+            await conn.execute("SELECT 1")
+        return {"status": "online"}
+    except Exception as e:
+        return {"status": "offline", "error": str(e)}
 
 @app.get("/api/users", response_model=List[str])
 async def get_all_users():
