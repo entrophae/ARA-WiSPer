@@ -191,6 +191,10 @@ async def get_status(task_id: str):
         return JSONResponse(status_code=404, content={"error": "Task not found"})
     return state.tasks[task_id]
 
+@app.get("/status")
+def get_status_api():
+    return { "status": "online" }
+
 @app.get("/stats")
 async def get_stats():
     return {
@@ -199,6 +203,7 @@ async def get_stats():
         "total_wss_calls": state.total_wss_calls,
         "wconnections": state.wconnections
     }
+
 @app.get("/history")
 async def get_history():
     return state.transcription_history
