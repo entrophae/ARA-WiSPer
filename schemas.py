@@ -5,7 +5,8 @@ class UserCreate(BaseModel):
     userId: str
 
 class ToolCallRecord(BaseModel):
-    toolName: str
+    callId: str
+    name: str
     query: str
     answer: Optional[str] = ""
     
@@ -13,6 +14,7 @@ class ChatTurn(BaseModel):
     userId: str
     turnId: str
     userQuery: str
+    userImageUrl: Optional[str] = None
     llmResponse: str
     toolCalled: Optional[str] = None
     toolBufferResponse: Optional[str] = None

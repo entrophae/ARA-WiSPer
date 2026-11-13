@@ -87,6 +87,7 @@ async def startup_event():
                         REFERENCES users(user_id)
                         ON DELETE CASCADE,
                     user_query TEXT,
+                    user_image_url TEXT,
                     llm_response TEXT,
                     tool_called TEXT,
                     tool_buffer_response TEXT,
@@ -99,8 +100,21 @@ async def startup_event():
                     experiment_id TEXT NOT NULL
                         REFERENCES experiments(experiment_id)
                         ON DELETE CASCADE,
+                    path TEXT,
+                    language TEXT[] DEFAULT '{}',
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(experiment_id, path)
+                );
+
+                CREATE TABLE IF NOT EXISTS document_chunks (
+                    chunk_id SERIAL PRIMARY KEY,
+                    document_id INTEGER NOT NULL
+                        REFERENCES documents(document_id)
+                        ON DELETE CASCADE,
+                    chunk_index INTEGER NOT NULL,
+                    language text[] DEFAULT '{}'::text[],
                     content TEXT NOT NULL,
-                    path TEXT
+                    UNIQUE (document_id, chunk_index)
                 );
 
                 CREATE TABLE IF NOT EXISTS embedding_configs (
@@ -120,26 +134,26 @@ async def startup_event():
 
                 CREATE TABLE IF NOT EXISTS document_embeddings_4096 (
                     embedding_id SERIAL PRIMARY KEY,
-                    document_id INTEGER NOT NULL
-                        REFERENCES documents(document_id)
+                    chunk_id INTEGER NOT NULL
+                        REFERENCES document_chunks(chunk_id)
                         ON DELETE CASCADE,
                     config_id INTEGER NOT NULL
                         REFERENCES embedding_configs(config_id)
                         ON DELETE CASCADE,
                     embedding vector(4096) NOT NULL,
-                    UNIQUE(document_id, config_id)
+                    UNIQUE(chunk_id, config_id)
                 );
                 
                 CREATE TABLE IF NOT EXISTS document_embeddings_1536 (
                     embedding_id SERIAL PRIMARY KEY,
-                    document_id INTEGER NOT NULL
-                        REFERENCES documents(document_id)
+                    chunk_id INTEGER NOT NULL
+                        REFERENCES document_chunks(chunk_id)
                         ON DELETE CASCADE,
                     config_id INTEGER NOT NULL
                         REFERENCES embedding_configs(config_id)
                         ON DELETE CASCADE,
                     embedding vector(1536) NOT NULL,
-                    UNIQUE(document_id, config_id)
+                    UNIQUE(chunk_id, config_id)
                 );
             ''')
     except Exception as e:
@@ -202,7 +216,8 @@ async def get_users(user_id: str):
                         raw_tools = json.loads(raw_tools)
                     for tr in raw_tools:
                         tools_used_list.append(ToolCallRecord(
-                            toolName=tr.get("toolName", ""),
+                            callId=tr.get("callId", ""),
+                            name=tr.get("name", ""),
                             query=tr.get("query", ""),
                             answer=tr.get("answer", "")
                         ))
@@ -211,6 +226,7 @@ async def get_users(user_id: str):
                     userId=row["user_id"],
                     turnId=row["turn_id"],
                     userQuery=row["user_query"],
+                    userImageUrl=row["user_image_url"],
                     llmResponse=row["llm_response"],
                     toolCalled=row["tool_called"],
                     toolBufferResponse=row["tool_buffer_response"],
@@ -240,17 +256,18 @@ async def add_chat_turn(user_id: str, turn: ChatTurn):
             # Insert the turn using the path parameter
             await conn.execute('''
                 INSERT INTO chat_turns (
-                    turn_id, user_id, user_query, llm_response,
+                    turn_id, user_id, user_query, user_image_url, llm_response,
                     tool_called, tool_buffer_response, tools_used
                 ) 
-                VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
                 ON CONFLICT (turn_id) DO UPDATE 
                 SET user_query = EXCLUDED.user_query,
+                    user_image_url = EXCLUDED.user_image_url,
                     llm_response = EXCLUDED.llm_response,
                     tool_called = EXCLUDED.tool_called,
                     tool_buffer_response = EXCLUDED.tool_buffer_response,
                     tools_used = EXCLUDED.tools_used
-            ''', turn.turnId, user_id, turn.userQuery, turn.llmResponse, turn.toolCalled, turn.toolBufferResponse, tools_json)
+            ''', turn.turnId, user_id, turn.userQuery,turn.userImageUrl, turn.llmResponse, turn.toolCalled, turn.toolBufferResponse, tools_json)
             
     return {"status": "success"}
     
@@ -331,17 +348,18 @@ async def get_experiments():
         for exp in exps:
             exp_id = exp['experiment_id']
             users = await conn.fetch('SELECT user_id FROM experiment_users WHERE experiment_id = $1', exp_id)
+
             files = await conn.fetch('''
-                SELECT MAX(document_id) as doc_id, path 
+                SELECT document_id, path 
                 FROM documents 
-                WHERE experiment_id = $1 AND path IS NOT NULL 
-                GROUP BY path
+                WHERE experiment_id = $1
             ''', exp_id)
+
             results.append({
                 "id": exp_id,
                 "name": exp["name"],
                 "users": [u["user_id"] for u in users],
-                "files": [{"id": str(f["doc_id"]), "name": f["path"]} for f in files]
+                "files": [{"id": str(f["document_id"]), "name": f["path"]} for f in files]
             })
         return results
 
@@ -353,6 +371,24 @@ async def create_experiment(data: dict):
                 'INSERT INTO experiments (experiment_id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING',
                 data.get("experimentId"), data.get("name")
             )
+    return {"status": "success"}
+
+@app.delete("/api/experiments/{exp_id}")
+async def delete_experiment(exp_id: str):
+    target_dir = os.path.join(BASE_STORAGE_DIR, exp_id)
+    if os.path.exists(target_dir):
+        import shutil
+        shutil.rmtree(target_dir, ignore_errors=True)
+    else:
+        print(f"DEBUG: Folder not found on disk for deletion: {target_dir}")
+        
+    if db_pool:
+        async with db_pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM experiments WHERE experiment_id = $1",
+                exp_id
+            )
+    
     return {"status": "success"}
 
 @app.get("/api/users/{user_id}/experiments", response_model=List[str])
@@ -387,24 +423,30 @@ async def remove_user_from_experiment(exp_id: str, user_id: str):
             )
     return {"status": "success"}
     
-@app.get("/experiments/{experiment_id}/documents")
+@app.get("/api/experiments/{experiment_id}/documents")
 async def list_experiment_documents(experiment_id: str):
     if not db_pool:
         return {"files": []}
     async with db_pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT DISTINCT path FROM documents WHERE experiment_id = $1 AND path IS NOT NULL", 
+            "SELECT path FROM documents WHERE experiment_id = $1", 
             experiment_id
         )
         paths = [row["path"] for row in rows]
         return {"files": paths}
 
-@app.get("/experiments/{experiment_id}/files/{file_name:path}/content")
+@app.get("/api/experiments/{experiment_id}/files/{file_name:path}/content")
 async def get_document_content(experiment_id: str, file_name: str):
     if db_pool:
         async with db_pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT content FROM documents WHERE experiment_id = $1 AND path = $2",
+                """
+                SELECT c.content 
+                FROM document_chunks c
+                JOIN documents d ON c.document_id = d.document_id
+                WHERE d.experiment_id = $1 AND d.path = $2 
+                ORDER BY c.chunk_index ASC
+                """,
                 experiment_id, file_name
             )
             if rows:
@@ -412,7 +454,7 @@ async def get_document_content(experiment_id: str, file_name: str):
                 return {"content": full_content, "filename": file_name}
     return {"content": f"No extracted text found for {file_name}.", "filename": file_name}
 
-@app.delete("/experiments/{experiment_id}/files/{file_name:path}")
+@app.delete("/api/experiments/{experiment_id}/files/{file_name:path}")
 async def delete_experiment_file(experiment_id: str, file_name: str):
     file_path = os.path.join(BASE_STORAGE_DIR, experiment_id, file_name)
     print(f"DEBUG: Attempting to delete file from disk: {file_path}")
