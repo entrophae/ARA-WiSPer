@@ -1,10 +1,12 @@
 import base64
+import pypdfium2 as pdfium
 import re
 from typing import BinaryIO, Any
 from markitdown import MarkItDown, DocumentConverter, DocumentConverterResult
 
 audioExt = ['.mp3', '.wav', '.m4a', '.opus']
 imageExt = ['.png', '.jpg', '.jpeg', '.webp']
+pdfExt = ['.pdf']
 
 class AudioConverter(DocumentConverter):
     def __init__(self, audio_client, audio_model):
@@ -43,12 +45,20 @@ class ImageConverter(DocumentConverter):
         mime_type = f"image/{'jpeg' if ext in ['jpg', 'jpeg'] else ext}"
 
         prompt = (
-            "Analyze this image and apply the correct mode based on its content:\n"
-            "1. IF IT CONTAINS TEXT, HANDWRITING, EQUATIONS, OR FORMULAS: Act as a strict OCR and mathematical extraction engine. Output the exact text, numbers, and formulas verbatim. Do NOT summarize, do NOT describe the layout, and never use phrases like 'The image shows'. Treat all handwriting as literal text to be output character-by-character.\n"
-            "2. IF IT CONTAINS TABLES: Transcribe them strictly using Markdown table syntax (| Header | Header |), ensuring rows and columns map cleanly.\n"
-            "3. IF IT CONTAINS CHARTS OR DIAGRAMS WITH DATA: Extract the axes labels, data points, or key values into a structured bulleted list or markdown table.\n"
-            "4. IF IT IS ENTIRELY TEXTLESS (such as a pure photo, illustration, or graphic without text): Switch to descriptive mode and provide a rich, detailed semantic summary covering its visual elements, objects, relationships, and context.\n"
-            "CRITICAL: Follow these rules strictly and output only the raw content without conversational meta-language."
+            "You are a strict multimodal extraction engine.\n\n"
+            "DIRECTIVES BASED ON CONTENT:\n"
+            "1. IF TEXT / TABLES / CHARTS: Transcribe all visible text verbatim using clean Markdown headers and tables.\n"
+            "2. IF PORTRAIT / CHARACTER / OBJECT / SCENE: Output a strictly factual visual feature inventory. Categorize physically visible attributes using bullet points:\n"
+            "   - Subject Type: (e.g., Character Portrait, House Exterior)\n"
+            "   - Physical Features: (Hair color/length/style, eye color, facial features, skin tone, clothing)\n"
+            "   - Colors & Lighting: (Exact visible palette, background color)\n"
+            "   - Framing & Style: (e.g., Front-facing headshot, 2D digital illustration, solid background)\n\n"
+            "STRICT NEGATIVE CONSTRAINTS:\n"
+            "- NO EMOTIONAL OR PSYCHOLOGICAL EVALUATION: Never guess mood, feelings, or expressions (e.g., DO NOT write 'sad', 'pensive', 'somber', 'cheerful', 'reflective'). State only facial alignment (e.g., 'neutral mouth, eyes facing forward').\n"
+            "- NO SPECULATION OR SYMBOLISM: Never guess narrative meaning, context, or use cases (e.g., DO NOT write 'symbolizes', 'could be used for').\n"
+            "- NO META-LANGUAGE: Never use preamble phrases like 'The image is...', 'Description:', 'This illustration shows...', or 'Overall...'.\n"
+            "- NO CODE FENCES: Do not wrap output in ``` markdown fences.\n"
+            "- STRICT VISUAL ACCURACY: Describe ONLY physical colors and features visibly present. Do not guess or confuse colors."
         )
 
         response = self.client.chat.completions.create(
@@ -62,13 +72,18 @@ class ImageConverter(DocumentConverter):
                     ]
                 }
             ],
+            temperature=0.0,
             max_tokens=2048
         )
-        print(f"VLM response done");
+
+        print(f"VLM response done for {stream_info.file_name}")
+
         return DocumentConverterResult(markdown=f"### Image Content:\n\n{response.choices[0].message.content}")
 
 class DocumentPipeline:
     def __init__(self, vlm_client, vlm_model, stt_client, stt_model):
+        self.llm_client = vlm_client
+        self.llm_model = vlm_model
         self.md = MarkItDown(llm_client=vlm_client, llm_model=vlm_model)
         if stt_client and stt_model:
             self.md.register_converter(AudioConverter(stt_client, stt_model))
@@ -76,16 +91,23 @@ class DocumentPipeline:
             self.md.register_converter(ImageConverter(vlm_client, vlm_model))
 
     def extract_text(self, file_path: str) -> str:
+        print(f"Extracting text from {file_path}")
         result = self.md.convert(file_path)
         return result.text_content
 
-    def chunk_text(self, text: str, strategy="markdown") -> list[str]:
+    def chunk_text(self, text: str, file_name: str = "", strategy="markdown", add_context: bool = False) -> list[str]:
+        print(f"Chunking down {file_name}")
         if strategy == "markdown":
-            return self._chunk_by_markdown_headers(text)
+            chunks = self._chunk_by_markdown_headers(text, file_name=file_name)
         elif strategy == "paragraphs":
-            return self._chunk_by_paragraphs(text)
+            chunks = self._chunk_by_paragraphs(text)
         else:
-            return self._chunk_by_fixed_size(text)
+            chunks = self._chunk_by_fixed_size(text)
+
+        if add_context and self.llm_client and self.llm_model:
+            print(f"Adding context to {file_name}")
+            return self._enrich_chunks_with_context(full_text=text, chunks=chunks, file_name=file_name)
+        return chunks
 
     def _chunk_by_fixed_size(self, text: str, chunk_size=1000, overlap=100) -> list[str]:
         chunks = []
@@ -96,17 +118,38 @@ class DocumentPipeline:
             start += chunk_size - overlap
         return [c.strip() for c in chunks if c.strip()]
 
-    def _chunk_by_markdown_headers(self, text: str) -> list[str]:
-        raw_blocks = re.split(r'\n(?=#{1,3}\s)', text)
-        chunks = []
+    def _chunk_by_markdown_headers(self, text: str, file_name: str = "") -> list[str]:
+        raw_blocks = re.split(r'\n(?=#{1,2}\s)', text)
+        merged_blocks = []
+        current_block = ""
+
         for block in raw_blocks:
             block = block.strip()
-            if block:
-                if len(block) > 1500:
-                    chunks.extend(self._chunk_by_paragraphs(block, max_size=1200))
+            if not block:
+                continue
+
+            # Merge blocks under 400 characters into the next block
+            if len(block) < 400:
+                current_block = f"{current_block}\n\n{block}".strip()
+            else:
+                if current_block:
+                    merged_blocks.append(f"{current_block}\n\n{block}".strip())
+                    current_block = ""
                 else:
-                    chunks.append(block)
-        return chunks
+                    merged_blocks.append(block)
+
+        if current_block:
+            merged_blocks.append(current_block)
+
+        # Process oversized blocks
+        final_chunks = []
+        for block in merged_blocks:
+            if len(block) > 1600:
+                final_chunks.extend(self._chunk_by_paragraphs(block, max_size=1200))
+            elif len(block) >= 50:  # Ignore remaining empty/micro artifacts
+                final_chunks.append(block)
+
+        return final_chunks
 
     def _chunk_by_paragraphs(self, text: str, max_size=1200) -> list[str]:
         paragraphs = text.split('\n\n')
@@ -125,3 +168,31 @@ class DocumentPipeline:
         if current_chunk:
             chunks.append(current_chunk)
         return chunks
+
+    def _enrich_chunks_with_context(self, full_text: str, chunks: list[str], file_name: str = "") -> list[str]:
+        enriched_chunks = []
+        doc_snippet = full_text[:3000]
+
+        for chunk in chunks:
+            prompt = (
+                f"<document>\n{doc_snippet}\n</document>\n\n"
+                f"Here is a chunk from the document:\n<chunk>\n{chunk}\n</chunk>\n\n"
+                "Give a short, 1-sentence contextual description to situate this chunk within the document "
+                "(e.g., mention the entity, document topic, or section). "
+                "Output ONLY the concise contextual sentence without quotes or preamble."
+            )
+            try:
+                response = self.llm_client.chat.completions.create(
+                    model=self.llm_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=60,
+                    temperature=0.0
+                )
+                context_sentence = response.choices[0].message.content.strip()
+                prefix = f"[Document: {file_name} | Context: {context_sentence}]\n" if file_name else f"[Context: {context_sentence}]\n"
+                enriched_chunks.append(f"{prefix}{chunk}")
+            except Exception as e:
+                print(f"Context generation failed for chunk: {e}")
+                enriched_chunks.append(chunk)
+
+        return enriched_chunks

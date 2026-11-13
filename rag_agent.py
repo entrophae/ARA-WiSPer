@@ -43,15 +43,22 @@ class RagAgent:
             response = self.llm_client.chat.completions.create(
                 model=self.llm_model,
                 messages=[
-                    {"role": "system", "content": "Detect the primary language of the text. Reply with ONLY the English name of the language (e.g., 'English', 'German', 'French')."},
+                    {"role": "system", "content": "Detect the primary languages of the text. Reply strictly with a comma-separated list inside curly braces. Example: {English, German} or {English}. If unknown, reply {}."},
                     {"role": "user", "content": text[:1000]}
                 ],
-                max_tokens=10,
+                max_tokens=15,
                 temperature=0.0
             )
-            return response.choices[0].message.content.strip()
+            raw = response.choices[0].message.content.strip()
+
+            if "{" in raw and "}" in raw:
+                inner = raw[raw.find("{")+1 : raw.find("}")]
+                if not inner.strip():
+                    return []
+                return [lang.strip() for lang in inner.split(',')]
+            return []
         except:
-            return "unknown"
+            return []
             
     def ingest_file(self, file_path: str, strategy="markdown"):
         file_name = os.path.basename(file_path)
@@ -62,18 +69,29 @@ class RagAgent:
             self._update_status(file_name, "completed", "No extractable text found.")
             return
 
-        # Detect language once for the whole file
-        doc_language = self._detect_language(text)
-        self._update_status(file_name, "progress", f"Detected language: {doc_language}")
+        # Detele existing same-named document
+        self.vector_store.delete_document(file_name)
         
-        chunks = self.pipeline.chunk_text(text, strategy=strategy)
+        # Chunk text
+        self._update_status(file_name, "started", f"Chunking {file_name}...")
+        
+        chunks = self.pipeline.chunk_text(text, file_name=file_name, strategy=strategy, add_context=True)
         total_chunks = len(chunks)
-
+        
         for index, chunk in enumerate(chunks):
-            self.vector_store.insert_chunk(chunk, file_name, language=doc_language)
-            if index > 0 and index % 5 == 0:
-                self._update_status(file_name, "progress", f"Embedded {index}/{total_chunks} chunks.")
-                
+            chunk_language = self._detect_language(chunk)
+
+            self.vector_store.insert_chunk(
+                chunk_index=index, 
+                chunk=chunk,
+                file_name=file_name,
+                language=chunk_language
+            )
+
+            lang_display = f"({', '.join(chunk_language)})" if chunk_language else ""
+            
+            self._update_status(file_name, "progress", f"Processed chunk {index + 1}/{total_chunks} {lang_display}")
+
         self._update_status(file_name, "completed", f"Successfully processed {total_chunks} chunks.")
 
     def agentic_search(self, search_keywords: str, limit=10, max_distance=0.75):
@@ -136,9 +154,9 @@ class RagAgent:
             {
                 "role": "system", 
                 "content": (
-                    "You are a strict relevance grader. Evaluate the following numbered context chunks against the search keywords."
-                    "If a chunk contains information about the keywords, describes the entity, or is highly related to the topic, mark it as relevant."
-                    "Output ONLY a comma-separated list of the relevant chunk numbers (e.g., '0, 2, 3')."
+                    "You are a strict relevance grader. Evaluate the following numbered context chunks against the search keywords. "
+                    "If a chunk contains information about the keywords, describes the entity, or is highly related to the topic, mark it as relevant. "
+                    "Output ONLY a comma-separated list of the relevant chunk numbers (e.g., '0, 2, 3'). "
                     "If absolutely none are relevant, output 'NONE'."
                 )
             },
