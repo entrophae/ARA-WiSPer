@@ -18,7 +18,11 @@ os.makedirs(BASE_STORAGE_DIR, exist_ok=True)
 app.mount("/files", StaticFiles(directory=BASE_STORAGE_DIR), name="files")
 
 INGESTION_PROGRESS = {}
-        
+
+@app.get("/status")
+def get_status_api():
+    return { "status": "online" }
+    
 @app.get("/progress", response_model=ProgressResponse)
 def get_progress_api(headers: ProgressHeaders = Depends()):
     key = f"{headers.experiment_id}:{headers.file_name}"
