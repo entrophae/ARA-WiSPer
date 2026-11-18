@@ -177,6 +177,8 @@ object ProxySettingsRepository {
 
     var activeUserId: String = "default_user"
 
+    const val port = 8080
+
     object Routes {
         const val WS = "/ws"
         const val CONSTANTS = "/constants"

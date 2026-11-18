@@ -22,7 +22,7 @@ object WebSocketInterceptor {
             return true
         }
 
-        val localProxyUrl = "ws://127.0.0.1:8080" + ProxySettingsRepository.Routes.PROXY
+        val localProxyUrl = "ws://127.0.0.1:" + ProxySettingsRepository.port + ProxySettingsRepository.Routes.PROXY
         Log.i(tag, "Routing connection directly to local proxy: $localProxyUrl")
 
         try {
