@@ -9,11 +9,11 @@ plugins {
 // Read from local.properties
 def extLocalProps = new Properties()
 try {
-    localProps.load(new FileInputStream(rootProject.file("local.properties")))
+    extLocalProps.load(new FileInputStream(rootProject.file("local.properties")))
 } catch (Exception e) {
     logger.warn("local.properties not found")
 }
-def useStandalone = extLocalProps.getProperty("USE_STANDALONE", "true").toBoolean()
+def useStandalone = extLocalProps.getProperty("USE_STANDALONE", "false").toBoolean()
 
 android {
     namespace 'ch.fhnw.pepper_realtime'
@@ -153,11 +153,11 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp-tls:4.12.0'
 
     // Ktor Server
-    implementation "io.ktor:ktor-server-core:2.2.1"
-    implementation "io.ktor:ktor-server-netty:2.2.1"
-    implementation "io.ktor:ktor-server-websockets:2.2.1"
-    implementation "io.ktor:ktor-serialization-kotlinx-json:2.2.1"
-    implementation "io.ktor:ktor-server-content-negotiation:2.2.1"
+    implementation "io.ktor:ktor-server-core:2.3.13"
+    implementation "io.ktor:ktor-server-netty:2.3.13"
+    implementation "io.ktor:ktor-server-websockets:2.3.13"
+    implementation "io.ktor:ktor-serialization-kotlinx-json:2.3.13"
+    implementation "io.ktor:ktor-server-content-negotiation:2.3.13"
     // Ktor TLS Certificate
     implementation "io.ktor:ktor-network-tls-certificates:2.3.13"
 
