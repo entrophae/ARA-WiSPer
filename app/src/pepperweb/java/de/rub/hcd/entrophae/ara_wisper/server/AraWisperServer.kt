@@ -6,12 +6,18 @@ import de.rub.hcd.entrophae.ara_wisper.server.routes.dashboardRouting
 import de.rub.hcd.entrophae.ara_wisper.server.routes.proxyRouting
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appAssets
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
+import de.rub.hcd.entrophae.ara_wisper.network.getOrCreateDynamicKeyStore
 import de.rub.hcd.entrophae.ara_wisper.server.routes.ragRouting
 import de.rub.hcd.entrophae.ara_wisper.server.routes.constantsRouting
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.application.install
+import io.ktor.server.engine.ApplicationEngineEnvironment
+import io.ktor.server.engine.ApplicationEngineEnvironmentBuilder
+import io.ktor.server.engine.applicationEngineEnvironment
+import io.ktor.server.engine.connector
+import io.ktor.server.engine.sslConnector
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.netty.NettyApplicationEngine
@@ -26,7 +32,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.FileNotFoundException
 
-class AraWisperServer(private val port: Int = 8080) {
+class AraWisperServer() {
     private var server: NettyApplicationEngine? = null
     val serverJob = Job()
     val serverScope = CoroutineScope(Dispatchers.IO + serverJob)
@@ -34,51 +40,10 @@ class AraWisperServer(private val port: Int = 8080) {
     private fun start(viewModel: ChatViewModel) {
         Log.d(ProxySettingsRepository.TAG, "Configuring Ktor Server...")
 
-        server = embeddedServer(Netty, port = port) {
-            install(WebSockets.Plugin)
-
-            routing {
-                get("/") {
-                    try {
-                        val html =
-                            appAssets.open("web/index.html").bufferedReader().use { it.readText() }
-                        call.respondText(html, ContentType.Text.Html)
-                    } catch (e: Exception) {
-                        call.respond(
-                            HttpStatusCode.NotFound,
-                            "index.html not found in assets/web/"
-                        )
-                    }
-                }
-
-                constantsRouting(viewModel)
-                dashboardRouting(viewModel)
-                proxyRouting()
-                ragRouting()
-
-                // Dynamic routing for all files
-                get("/{fileName...}") {
-                    val path = call.parameters.getAll("fileName")?.joinToString("/") ?: return@get
-
-                    try {
-                        val fileContent =
-                            appAssets.open("web/$path").bufferedReader().use { it.readText() }
-                        val contentType = when {
-                            path.endsWith(".html") -> ContentType.Text.Html
-                            path.endsWith(".css") -> ContentType.Text.CSS
-                            path.endsWith(".js") -> ContentType.Text.JavaScript
-                            path.endsWith(".json") -> ContentType.Application.Json
-                            else -> ContentType.Text.Plain
-                        }
-                        call.respondText(fileContent, contentType)
-                    } catch (e: FileNotFoundException) {
-                        call.respond(HttpStatusCode.NotFound, "File not found")
-                    }
-                }
-            }
-        }
+        val env = createEnvironment(viewModel)
+        server = embeddedServer(Netty, env)
         server?.start(wait = false)
-        Log.d(ProxySettingsRepository.TAG, "Ktor Server successfully listening on port $port")
+        Log.d(ProxySettingsRepository.TAG, "Ktor Server successfully listening on port ${ProxySettingsRepository.port}")
     }
 
     private fun stop() {
@@ -91,10 +56,75 @@ class AraWisperServer(private val port: Int = 8080) {
         serverScope.launch {
             try {
                 start(viewModel)
-                Log.d(ProxySettingsRepository.TAG, "web server started on port $port")
+                Log.d(ProxySettingsRepository.TAG, "web server started on port ${ProxySettingsRepository.port}")
             } catch (e: Exception) {
                 Log.e(ProxySettingsRepository.TAG, "failed to start server: ${e.message}")
             }
+        }
+    }
+
+    private fun createEnvironment(viewModel: ChatViewModel): ApplicationEngineEnvironment =
+        applicationEngineEnvironment {
+            configureConnectors()
+            module {
+                install(WebSockets.Plugin)
+                routing {
+                    constantsRouting(viewModel)
+                    dashboardRouting(viewModel)
+                    proxyRouting()
+                    ragRouting()
+
+                    get("/") {
+                        try {
+                            val html =
+                                appAssets.open("web/index.html").bufferedReader()
+                                    .use { it.readText() }
+                            call.respondText(html, ContentType.Text.Html)
+                        } catch (e: Exception) {
+                            call.respond(
+                                HttpStatusCode.NotFound,
+                                "index.html not found in assets/web/"
+                            )
+                        }
+                    }
+
+                    // Dynamic routing for all files
+                    get("/{fileName...}") {
+                        val path =
+                            call.parameters.getAll("fileName")?.joinToString("/") ?: return@get
+
+                        try {
+                            val fileContent =
+                                appAssets.open("web/$path").bufferedReader().use { it.readText() }
+                            val contentType = when {
+                                path.endsWith(".html") -> ContentType.Text.Html
+                                path.endsWith(".css") -> ContentType.Text.CSS
+                                path.endsWith(".js") -> ContentType.Text.JavaScript
+                                path.endsWith(".json") -> ContentType.Application.Json
+                                else -> ContentType.Text.Plain
+                            }
+                            call.respondText(fileContent, contentType)
+                        } catch (e: FileNotFoundException) {
+                            call.respond(HttpStatusCode.NotFound, "File not found")
+                        }
+                    }
+                }
+            }
+        }
+
+    private fun ApplicationEngineEnvironmentBuilder.configureConnectors() {
+        connector {
+            this.port = ProxySettingsRepository.port
+            this.host = "0.0.0.0"
+        }
+        sslConnector(
+            keyStore = getOrCreateDynamicKeyStore(),
+            keyAlias = ProxySettingsRepository.keyAlias,
+            keyStorePassword = { ProxySettingsRepository.ksPassword.toCharArray() },
+            privateKeyPassword = { ProxySettingsRepository.ksPassword.toCharArray() }
+        ) {
+            this.port = ProxySettingsRepository.sslPort
+            this.host = "0.0.0.0"
         }
     }
 

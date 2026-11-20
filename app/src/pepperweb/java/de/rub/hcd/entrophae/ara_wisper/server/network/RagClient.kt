@@ -3,6 +3,7 @@ package de.rub.hcd.entrophae.ara_wisper.server.network
 import android.util.Log
 import ch.fhnw.pepper_realtime.network.HttpClientManager
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
+import de.rub.hcd.entrophae.ara_wisper.network.authToken
 import io.ktor.utils.io.errors.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

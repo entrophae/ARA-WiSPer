@@ -1,4 +1,4 @@
-package de.rub.hcd.entrophae.ara_wisper.server.network
+package de.rub.hcd.entrophae.ara_wisper.network
 
 import okhttp3.Request
 

@@ -66,7 +66,7 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
 
             webServer?.stopServer()
 
-            webServer = AraWisperServer(8080)
+            webServer = AraWisperServer()
             webServer?.startServer(viewModel)
         }
     }

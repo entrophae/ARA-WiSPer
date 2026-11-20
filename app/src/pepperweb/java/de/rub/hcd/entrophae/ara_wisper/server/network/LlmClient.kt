@@ -11,6 +11,7 @@ import androidx.core.graphics.createBitmap
 import ch.fhnw.pepper_realtime.network.HttpClientManager
 import de.rub.hcd.entrophae.ara_wisper.interceptor.ToolInterceptor
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
+import de.rub.hcd.entrophae.ara_wisper.network.authBearer
 import de.rub.hcd.entrophae.ara_wisper.server.data.ChatTurn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
