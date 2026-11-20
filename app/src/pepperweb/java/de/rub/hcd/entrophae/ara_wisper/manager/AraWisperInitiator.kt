@@ -5,11 +5,13 @@ import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
+import de.rub.hcd.entrophae.ara_wisper.network.installConscryptSecurity
 
 class AraWisperInitiator : ContentProvider() {
 
     override fun onCreate(): Boolean {
         val app = context?.applicationContext as? Application ?: return false
+        installConscryptSecurity()
         AraWisperManager.init(app)
         app.registerActivityLifecycleCallbacks(AraWisperManager)
         return true
