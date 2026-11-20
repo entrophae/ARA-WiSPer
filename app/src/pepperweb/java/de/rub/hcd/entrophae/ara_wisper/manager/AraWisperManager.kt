@@ -41,6 +41,8 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
 
     fun init(application: Application) {
         app = application
+        app.registerActivityLifecycleCallbacks(this)
+        installConscryptSecurity()
         speechManager = SpeechManager()
     }
 
@@ -62,6 +64,8 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
         if (activity is ChatActivity) {
+            chatActivityAdapter = ChatActivityAdapter(activity)
+
             val viewModel = ViewModelProvider(activity)[ChatViewModel::class.java]
 
             webServer?.stopServer()
@@ -112,15 +116,13 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
         if (activity is ChatActivity) {
             webServer?.stopServer()
             webServer = null
-            chatActivityAdapter = null
+            if (chatActivityAdapter?.isFor(activity) == true) {
+                chatActivityAdapter = null
+            }
         }
     }
 
-    override fun onActivityResumed(activity: Activity) {
-        if (activity is ChatActivity) {
-            chatActivityAdapter = ChatActivityAdapter(activity)
-        }
-    }
+    override fun onActivityResumed(activity: Activity) {}
     override fun onActivityPaused(activity: Activity) {}
     override fun onActivityStopped(activity: Activity) {}
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}

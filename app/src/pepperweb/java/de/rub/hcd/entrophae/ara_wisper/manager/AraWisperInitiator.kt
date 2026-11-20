@@ -11,9 +11,7 @@ class AraWisperInitiator : ContentProvider() {
 
     override fun onCreate(): Boolean {
         val app = context?.applicationContext as? Application ?: return false
-        installConscryptSecurity()
         AraWisperManager.init(app)
-        app.registerActivityLifecycleCallbacks(AraWisperManager)
         return true
     }
 
