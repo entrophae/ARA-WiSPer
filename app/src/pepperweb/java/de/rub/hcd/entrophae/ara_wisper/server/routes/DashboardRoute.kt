@@ -14,6 +14,7 @@ import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository.Settings
 import de.rub.hcd.entrophae.ara_wisper.server.data.ChatTurn
 import de.rub.hcd.entrophae.ara_wisper.server.data.ToolCallRecord
 import de.rub.hcd.entrophae.ara_wisper.server.manager.DashboardManager
+import de.rub.hcd.entrophae.ara_wisper.server.manager.DashboardVideoManager
 import de.rub.hcd.entrophae.ara_wisper.server.network.DataBaseClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.WebSocketPayloads
 import io.ktor.http.ContentType
@@ -31,10 +32,16 @@ import org.json.JSONObject
 import de.rub.hcd.entrophae.ara_wisper.server.network.LlmClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.RagClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.SttClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import java.util.Collections
 
 fun Route.dashboardRouting(viewModel: ChatViewModel) {
 
+    val activeConnections = Collections.synchronizedSet(LinkedHashSet<DefaultWebSocketServerSession>())
+
     webSocket(ProxySettingsRepository.Routes.WS) {
+        activeConnections.add(this)
         Log.i(AraWisperManager.appString(R.string.app_name), "Dashboard connected!")
 
         sendJsonToClient(JSONObject().apply{
@@ -42,6 +49,8 @@ fun Route.dashboardRouting(viewModel: ChatViewModel) {
                 put("message", "ARA-WiSPer Core Active")
             }
         )
+
+        var dashboardVideoManager: DashboardVideoManager? = null
 
         sendInitialApiKeys()
 
@@ -57,16 +66,41 @@ fun Route.dashboardRouting(viewModel: ChatViewModel) {
             for (frame in incoming) {
                 if (frame is Frame.Text) {
                     val rawJson = frame.readText()
-                    DashboardManager.sendLog(rawJson, isFromRobot = true)
-                    handleDashboardCommand(rawJson, viewModel)
+                    val json = JSONObject(rawJson)
+                    val type = json.optString("type")
+                    Log.i("WebRTCManager", "frame type: $type")
+                    when (type) {
+                        "webrtc-request-stream" -> {
+                            dashboardVideoManager?.stop()
+                            dashboardVideoManager = DashboardVideoManager { jsonString ->
+                                send(Frame.Text(jsonString))
+                            }
+                            AraWisperManager.dashboardVideoManager = dashboardVideoManager
+
+                            dashboardVideoManager.startCameraAndStream()
+                        }
+                        "webrtc-answer", "webrtc-candidate" -> {
+                            dashboardVideoManager?.handleIncomingSignaling(json)
+                        }
+                        "webrtc-end-stream" -> {
+                            dashboardVideoManager?.stop()
+                            dashboardVideoManager = null
+                        }
+                        else -> {
+                            DashboardManager.sendLog(rawJson, isFromRobot = true)
+                            handleDashboardCommand(rawJson, viewModel)
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
             DashboardManager.sendError("WebSocket connection error: ${e.message}")
         } finally {
+            activeConnections.remove(this)
             statusJob.cancel()
             // chatJob.cancel()
             loggerJob.cancel()
+            dashboardVideoManager?.stop()
         }
     }
 

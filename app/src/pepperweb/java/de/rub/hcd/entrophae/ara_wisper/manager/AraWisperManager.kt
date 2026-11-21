@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import de.rub.hcd.entrophae.ara_wisper.network.installConscryptSecurity
+import de.rub.hcd.entrophae.ara_wisper.server.manager.DashboardVideoManager
 import kotlinx.coroutines.flow.MutableStateFlow
 
 object AraWisperManager : Application.ActivityLifecycleCallbacks {
@@ -38,6 +39,8 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
 
     lateinit var speechManager: SpeechManager
         private set
+
+    lateinit var dashboardVideoManager: DashboardVideoManager
 
     var isSessionAllowed = MutableStateFlow(false)
 

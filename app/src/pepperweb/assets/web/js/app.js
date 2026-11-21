@@ -8,7 +8,8 @@ const app = createApp({
             showExperimentManager: false,
             speakInput: '',
             promptInput: '',
-            store: appStore
+            store: appStore,
+            videoStream: VideoStream
         };
     },
     methods: {
@@ -69,5 +70,6 @@ const app = createApp({
 app.component('settings-modal', SettingsModal);
 app.component('user-knowledge-modal', UserKnowledgeModal);
 app.component('experiment-manager-modal', ExperimentManagerModal);
+app.component('videostream', VideoStream);
 
 app.mount('#app');

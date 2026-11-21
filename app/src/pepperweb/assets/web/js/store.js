@@ -12,6 +12,7 @@ const appStore = reactive({
     isLLMConfigured: false,
     isELMConfigured: false,
     isVLMConfigure: false,
+    isVideoStream: false,
     isMicActive: false,
     isMuted: false,
     micTimeout: null,
@@ -63,6 +64,9 @@ const appStore = reactive({
         if (success) {
             this.isLLMMode = !this.isLLMMode
         }
+    },
+    toggleVideoStream() {
+        this.isVideoStream = !this.isVideoStream;
     },
     restart() {
         const success = ApiService.sendSocketMessage(this.socket, {
@@ -184,6 +188,9 @@ const appStore = reactive({
                         this.userChatHistory = payload.history || [];
                         this.rebuildTerminalLogs();
                     }
+                }
+                else if (payload.type === 'webrtc-offer' || payload.type === 'webrtc-answer' || payload.type === 'webrtc-candidate' || payload.type === 'webrtc-stream-refresh-needed') {
+                    window.dispatchEvent(new CustomEvent('webrtc-receive', { detail: payload }));
                 }
             } catch (e) {
                 console.error("Failed to parse message", e);

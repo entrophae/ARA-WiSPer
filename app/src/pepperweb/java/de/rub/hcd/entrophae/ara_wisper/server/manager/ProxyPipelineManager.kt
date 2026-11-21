@@ -176,6 +176,8 @@ class ProxyPipelineManager(
             // Instantly push this image to the dashboard live log for this item ID
             DashboardManager.updateChat(turnId = turn.turnId, isUser = true, userImageUrl = imageUrl)
         }
+
+        AraWisperManager.dashboardVideoManager.restartCameraStream()
     }
 
     private fun processManualCommandItem(cleanText: String, nativeItemId: String) {
