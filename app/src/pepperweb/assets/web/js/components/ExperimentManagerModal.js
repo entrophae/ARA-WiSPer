@@ -7,7 +7,8 @@ const ExperimentManagerModal = {
             viewingContent: null,
             viewingFileUrl: null,
             viewingFilename: '',
-            uploadingFiles: {}
+            uploadingFiles: {},
+            editingSequenceExpId: null
         };
     },
     computed: {
@@ -24,93 +25,145 @@ const ExperimentManagerModal = {
     },
     template: `
         <div class="modal">
-            <div class="modal-content panel" style="width: 700px; max-width: 90vw;">
-                <span class="close-btn" @click="$emit('close')">&times;</span>
-                <h2 class="modal-title">Experiments</h2>
-
-                <div class="control-group">
-                    <input type="text" v-model="newExpName" placeholder="New Experiment Name" @keyup.enter="handleCreate">
-                    <button @click="handleCreate" style="width: auto;">Create</button>
+            <div class="modal-content panel wide-modal">
+                <div class="modal-header">
+                    <h2 class="modal-title">Experiments</h2>
+                    <span class="close-btn" @click="$emit('close')">&times;</span>
                 </div>
+                <div class="modal-body">
+                    <!-- Create New Experiment -->
+                    <div class="settings-group">
+                        <h3>Create New</h3>
+                        <div class="input-wrapper" style="flex-direction: row; gap: 10px;">
+                            <input type="text" v-model="newExpName" placeholder="New Experiment Name" @keyup.enter="handleCreate" style="flex: 1;">
+                            <button @click="handleCreate" style="width: auto;">Create Experiment</button>
+                        </div>
+                    </div>
 
-                <div class="history-editor" style="margin-top: 20px;">
-                    <div v-for="exp in experiments" :key="exp.id" class="history-turn-card">
-                        <div class="turn-header">
-                            <strong>{{ exp.name }}</strong> ({{ exp.id }})
-                            <button @click="deleteExperiment(exp.id)" class="btn-icon delete-btn">🗑️</button>
+                    <!-- Existing Experiments -->
+                    <div class="settings-group" v-for="exp in experiments" :key="exp.id" style="border: 1px solid #333; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <h3 style="display: flex; justify-content: space-between; align-items: center; margin-top: 0;">
+                            <span>{{ exp.name }} <span style="font-size: 0.8em; color: #888;">({{ exp.id }})</span></span>
+                            <button @click="deleteExperiment(exp.id)" class="btn-icon delete-btn" title="Delete Experiment">🗑️</button>
+                        </h3>
+
+                        <!-- 1. Assigned Users -->
+                        <div class="input-wrapper" style="margin-bottom: 15px;">
+                            <label class="input-label">Assigned Users</label>
+                            <div style="margin-bottom: 10px;">
+                                <span v-if="!exp.users || exp.users.length === 0" style="color: #666; font-size: 0.9em;">No users assigned</span>
+                                <span v-for="u in exp.users" :key="u" class="pipeline-badge blue" style="margin-right: 5px;">
+                                    {{ u }} <span @click="handleUnassign(exp.id, u)" style="cursor:pointer; color:#ff6b6b; margin-left: 4px;">&times;</span>
+                                </span>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <select v-model="selectedUsers[exp.id]" style="flex: 1;">
+                                    <option disabled value="">Assign a user...</option>
+                                    <option v-for="user in allUsers" :key="user" :value="user" :disabled="exp.users && exp.users.includes(user)">{{ user }}</option>
+                                </select>
+                                <button class="btn-secondary" @click="handleAssign(exp.id)" style="width: auto;">Assign</button>
+                            </div>
                         </div>
 
-                        <div style="margin-bottom: 10px;">
-                            <strong>Assigned Users:</strong>
-                            <span v-for="u in exp.users" :key="u" class="pipeline-badge blue" style="margin-right: 5px;">
-                                {{ u }} <span @click="handleUnassign(exp.id, u)" style="cursor:pointer; color:red;">&times;</span>
-                            </span>
+                        <!-- 2. Sequence Configuration (Experiment Builder) -->
+                        <div class="input-wrapper" style="margin-bottom: 15px;">
+                            <label class="input-label">Sequence Configuration</label>
+
+                            <!-- Toggle Button -->
+                            <button
+                                v-if="editingSequenceExpId !== exp.id"
+                                @click="editingSequenceExpId = exp.id"
+                                class="btn-secondary"
+                                style="width: 100%; text-align: left;"
+                            >
+                                ⚙️ Edit Sequence Data ({{ exp.config && exp.config.sequence ? Object.keys(exp.config.sequence).length : 0 }} Steps)
+                            </button>
+
+                            <!-- Inline Builder Component -->
+                            <experiment-builder
+                                v-if="editingSequenceExpId === exp.id"
+                                :initial-config="exp.config"
+                                @save="handleSaveConfig(exp.id, $event)"
+                                @close="editingSequenceExpId = null"
+                            ></experiment-builder>
                         </div>
 
-                        <div class="control-group" style="margin-bottom: 15px;">
-                            <select v-model="selectedUsers[exp.id]">
-                                <option disabled value="">Assign a user...</option>
-                                <option v-for="user in allUsers" :key="user" :value="user" :disabled="exp.users.includes(user)">{{ user }}</option>
-                            </select>
-                            <button @click="handleAssign(exp.id)" style="width: auto;">Assign</button>
-                        </div>
+                        <!-- 3. Ingested Documents -->
+                        <div class="input-wrapper">
+                            <label class="input-label">Ingested Documents</label>
 
-                        <div class="documents-section">
-                            <h4>Ingested Documents</h4>
-                            <ul>
-                                <li v-for="file in exp.files" :key="file.id">
+                            <ul v-if="exp.files && exp.files.length > 0" style="list-style: none; padding: 0; margin-bottom: 10px;">
+                                <li v-for="file in exp.files" :key="file.id" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; margin-bottom: 5px; border-radius: 4px;">
                                     <span>{{ file.name }}</span>
                                     <div style="display: flex; gap: 5px;">
-                                        <button @click="viewFileContent(exp.id, file.name)" class="btn-sm">View Content</button>
-                                        <button @click="viewRawFile(exp.id, file.name)" class="btn-sm">View File</button>
-                                        <button @click="deleteFile(exp.id, file.name)" class="btn-sm btn-danger">Delete</button>
+                                        <button @click="viewFileContent(exp.id, file.name)" class="btn-secondary btn-sm" title="View Text Content">Txt</button>
+                                        <button @click="viewRawFile(exp.id, file.name)" class="btn-secondary btn-sm" title="Preview Original File">🔍</button>
+                                        <button @click="deleteFile(exp.id, file.name)" class="btn-danger btn-sm">X</button>
                                     </div>
                                 </li>
-                                <template v-for="(statusMsg, uploadKey) in uploadingFiles" :key="uploadKey">
-                                    <li v-if="uploadKey.startsWith(exp.id + '_')">
-                                        <span>{{ uploadKey.substring(uploadKey.indexOf('_') + 1) }}</span>
+                            </ul>
+                            <span v-else style="color: #666; font-size: 0.9em; display: block; margin-bottom: 10px;">No files ingested yet.</span>
 
-                                        <span class="pipeline-badge yellow" style="font-size: 0.8em;">
-                                            <span class="spinner">⏳</span>
-                                            {{ statusMsg }}
+                            <ul v-if="hasUploadingFiles(exp.id)" style="list-style: none; padding: 0; margin-bottom: 10px;">
+                                <template v-for="(statusMsg, uploadKey) in uploadingFiles" :key="uploadKey">
+                                    <li v-if="uploadKey.startsWith(exp.id + '_')" style="padding: 8px 10px; margin-bottom: 5px; border-radius: 4px;">
+                                        <span>{{ uploadKey.substring(uploadKey.indexOf('_') + 1) }}</span>
+                                        <span class="pipeline-badge yellow" style="font-size: 0.8em; float: right;">
+                                            <span class="spinner">⏳</span> {{ statusMsg }}
                                         </span>
                                     </li>
                                 </template>
                             </ul>
-                        </div>
 
-                        <div class="control-group">
-                            <input type="file" :ref="'file_' + exp.id">
-                            <button @click="handleUpload(exp.id)" style="width: auto;">Upload & Embed</button>
+                            <div style="display: flex; gap: 10px;">
+                                <input type="file" :ref="'file_' + exp.id" style="flex: 1;">
+                                <button class="btn-secondary" @click="handleUpload(exp.id)" style="width: auto;">Upload & Embed</button>
+                            </div>
                         </div>
                     </div>
                 </div>
+                <div class="modal-footer">
+                    <button @click="$emit('close')" class="btn-secondary">Close</button>
+                </div>
             </div>
-            <div v-if="viewingContent !== null || viewingFileUrl !== null" class="modal-backdrop" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
-                <div class="modal-content panel" style="background: white; padding: 20px; width: 80vw; max-width: 900px; max-height: 85vh; display: flex; flex-direction: column; align-items: center;">
-                    <h3>{{ viewingContent !== null ? 'Content' : 'File Preview' }}: {{ viewingFilename }}</h3>
+            <!-- File Preview Backdrop overlay -->
+            <div v-if="viewingContent !== null || viewingFileUrl !== null" class="modal-backdrop" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 1050;">
+                <div class="modal-content panel" style="padding: 20px; width: 80vw; max-width: 900px; max-height: 85vh; display: flex; flex-direction: column; align-items: center;">
+                    <h3 style="color: #111;">{{ viewingContent !== null ? 'Content' : 'File Preview' }}: {{ viewingFilename }}</h3>
+
                     <div style="margin: 15px 0; width: 100%; flex: 1; display: flex; justify-content: center; overflow-y: auto; min-height: 0;">
                         <!-- Text Content -->
-                        <pre v-if="viewingContent !== null" style="white-space: pre-wrap; word-break: break-word; background: #f8f9fa; padding: 10px; border-radius: 4px; width: 100%;">{{ viewingContent }}</pre>
+                        <pre v-if="viewingContent !== null" style="white-space: pre-wrap; word-break: break-word; color: #333; padding: 15px; border-radius: 4px; width: 100%;">{{ viewingContent }}</pre>
+
                         <!-- Media/File Preview -->
                         <template v-else>
                             <img v-if="isImage" :src="viewingFileUrl" :alt="viewingFilename" style="max-width: 100%; max-height: 60vh; object-fit: contain; border: 1px solid #ddd; border-radius: 4px;">
                             <iframe v-else-if="isPdf" :src="viewingFileUrl" style="width: 100%; height: 60vh; border: 1px solid #ddd; border-radius: 4px;"></iframe>
-                            <div v-else style="padding: 40px; text-align: center; background: #f8f9fa; width: 100%; border-radius: 4px;">
+                            <div v-else style="padding: 40px; text-align: center; color: #333; width: 100%; border-radius: 4px;">
                                 <p>Direct preview not available for <strong>.{{ fileExtension }}</strong> files.</p>
-                                <a :href="viewingFileUrl" download class="btn-secondary" style="text-decoration: none; display: inline-block; padding: 8px 16px; margin-top: 10px;">Download File</a>
+                                <a :href="viewingFileUrl" download class="btn-secondary" style="text-decoration: none; display: inline-block; padding: 8px 16px; margin-top: 10px; color: #333;">Download File</a>
                             </div>
                         </template>
                     </div>
+
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
-                        <a v-if="viewingFileUrl" :href="viewingFileUrl" target="_blank"><button  class="btn-secondary">Open in New Tab</button></a>
-                        <button @click="closeModal" class="btn-secondary">Close</button>
+                        <a v-if="viewingFileUrl" :href="viewingFileUrl" target="_blank"><button class="btn-secondary" style="color: #333; border-color: #ccc;">Open in New Tab</button></a>
+                        <button @click="closeModal" class="btn-secondary" style="color: #333; border-color: #ccc;">Close Preview</button>
                     </div>
                 </div>
             </div>
         </div>
     `,
     methods: {
+        async handleSaveConfig(expId, configJson) {
+            // Closes the builder panel
+            this.editingSequenceExpId = null;
+            // Commits the JSON to the Database
+            await appStore.saveExperimentConfig(expId, configJson);
+        },
+        hasUploadingFiles(expId) {
+            return Object.keys(this.uploadingFiles).some(key => key.startsWith(expId + '_'));
+        },
         handleCreate() {
             if (this.newExpName.trim()) {
                 appStore.createExperiment(this.newExpName.trim());

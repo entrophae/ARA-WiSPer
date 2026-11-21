@@ -68,6 +68,20 @@ const ApiService = {
         return true;
     },
 
+    async saveExperimentConfig(route, expId, configJson) {
+        const response = await fetch(`${route}/${expId}/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(configJson)
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        return await response.json();
+    },
+
     async probeModelCapability(modelId, probeType, fieldId) {
         try {
             const safeModelId = modelId ? encodeURIComponent(modelId) : '';

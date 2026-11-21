@@ -70,6 +70,7 @@ const app = createApp({
 app.component('settings-modal', SettingsModal);
 app.component('user-knowledge-modal', UserKnowledgeModal);
 app.component('experiment-manager-modal', ExperimentManagerModal);
+app.component('experiment-builder', ExperimentBuilder);
 app.component('videostream', VideoStream);
 
 app.mount('#app');

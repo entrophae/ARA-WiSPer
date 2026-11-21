@@ -382,6 +382,17 @@ const appStore = reactive({
             this.logMessage('Error removing user', 'log-error');
         }
     },
+    async saveExperimentConfig(expId, configJson) {
+        try {
+            await ApiService.saveExperimentConfig(this.constants.ROUTE_RAG_EXPERIMENTS, expId, configJson);
+            this.logMessage(`Experiment configuration saved successfully.`, 'log-system');
+
+            await this.fetchExperiments();
+        } catch (e) {
+            console.error(e);
+            this.logMessage('Error saving experiment configuration to database.', 'log-error');
+        }
+    },
 
     setUserIdOverSocket() {
         if (!this.activeUserId || !this.isConnected) return;
