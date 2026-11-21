@@ -178,7 +178,7 @@ object ProxySettingsRepository {
     var activeUserId: String = "default_user"
 
     const val port = 8080
-    const val sslPort = 8080
+    const val sslPort = 8443
     const val ksPassword = "arawispercert"
     const val keyAlias = "arawisper"
     const val trustProviderName = "AraWisperTrust"

@@ -30,35 +30,72 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.FileNotFoundException
+import java.util.concurrent.atomic.AtomicBoolean
 
 class AraWisperServer() {
+    companion object {
+        private val lifecycleMutex = Mutex()
+    }
+
+    @Volatile
     private var server: NettyApplicationEngine? = null
+    private val stopped = AtomicBoolean(false)
     val serverJob = Job()
     val serverScope = CoroutineScope(Dispatchers.IO + serverJob)
 
     private fun start(viewModel: ChatViewModel) {
-        Log.d(ProxySettingsRepository.TAG, "Configuring Ktor Server...")
-
+        if (stopped.get()) return
+        Log.d(ProxySettingsRepository.TAG, "Configuring Ktor Server (http=${ProxySettingsRepository.port}, https=${ProxySettingsRepository.sslPort})...")
         val env = createEnvironment(viewModel)
-        server = embeddedServer(Netty, env)
-        server?.start(wait = false)
-        Log.d(ProxySettingsRepository.TAG, "Ktor Server successfully listening on port ${ProxySettingsRepository.port}")
-    }
+        if (stopped.get()) return
 
-    private fun stop() {
-        Log.d(ProxySettingsRepository.TAG, "Shutting down Ktor Server...")
-        server?.stop(gracePeriodMillis = 1000, timeoutMillis = 2000)
-        Log.d(ProxySettingsRepository.TAG, "web server stopped")
+        var engine: NettyApplicationEngine? = null
+        try {
+            engine = embeddedServer(Netty, env)
+            if (stopped.get()) return
+            engine.start(wait = false)
+
+            if (stopped.get()) {
+                engine.stop(gracePeriodMillis = 500, timeoutMillis = 1000)
+                return
+            }
+
+            server = engine
+            Log.d(ProxySettingsRepository.TAG, "Ktor Server successfully listening on port ${ProxySettingsRepository.port}")
+        } catch (e: Exception) {
+            Log.e(ProxySettingsRepository.TAG, "failed to start server on ports ${ProxySettingsRepository.port}/${ProxySettingsRepository.sslPort}: ${e.message}")
+            runCatching { engine?.stop(0, 0) }
+            throw e
+        }
     }
 
     fun startServer(viewModel: ChatViewModel) {
         serverScope.launch {
-            try {
-                start(viewModel)
-                Log.d(ProxySettingsRepository.TAG, "web server started on port ${ProxySettingsRepository.port}")
-            } catch (e: Exception) {
-                Log.e(ProxySettingsRepository.TAG, "failed to start server: ${e.message}")
+            lifecycleMutex.withLock {
+                try {
+                    start(viewModel)
+                    if (!stopped.get()) {
+                        Log.d(ProxySettingsRepository.TAG, "web server started on port ${ProxySettingsRepository.port}")
+                    }
+                } catch (e: Exception) {
+                    Log.e(ProxySettingsRepository.TAG, "failed to start server: ${e.message}")
+                }
+            }
+        }
+    }
+
+    fun stopServer() {
+        stopped.set(true)
+        CoroutineScope(Dispatchers.IO).launch {
+            lifecycleMutex.withLock {
+                Log.d(ProxySettingsRepository.TAG, "Shutting down Ktor Server...")
+                server?.stop(gracePeriodMillis = 500, timeoutMillis = 1000)
+                server = null
+                serverJob.cancel()
+                Log.d(ProxySettingsRepository.TAG, "web server stopped")
             }
         }
     }
@@ -126,11 +163,6 @@ class AraWisperServer() {
             this.port = ProxySettingsRepository.sslPort
             this.host = "0.0.0.0"
         }
-    }
-
-    fun stopServer() {
-        stop()
-        serverJob.cancel()
     }
 
 }
