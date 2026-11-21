@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -62,6 +63,26 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
         return app.getString(id, *args)
     }
 
+    fun getLocalIpAddress(): String? {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val networkInterface: NetworkInterface = interfaces.nextElement()
+                if (!networkInterface.isUp || networkInterface.isLoopback) continue
+                val interfacesIpAddress = networkInterface.inetAddresses
+                while (interfacesIpAddress.hasMoreElements()) {
+                    val inetAddress = interfacesIpAddress.nextElement()
+                    if (!inetAddress.isLoopbackAddress && inetAddress is Inet4Address && inetAddress.isSiteLocalAddress) {
+                        return inetAddress.hostAddress
+                    }
+                }
+            }
+        } catch (ex: SocketException) {
+            ex.printStackTrace()
+        }
+        return null
+    }
+
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
         if (activity is ChatActivity) {
             chatActivityAdapter = ChatActivityAdapter(activity)
@@ -94,7 +115,7 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text("ARA-WiSPer Server Running", color = Color.White)
-                                    Text("Access Dashboard at port :8080", color = Color.LightGray)
+                                    Text("${getLocalIpAddress()}:${ProxySettingsRepository.port}", color = Color.LightGray, fontWeight = FontWeight.Bold)
                                     Spacer(modifier = Modifier.height(24.dp))
                                     Button(onClick = {
                                         isSessionAllowed.value = true

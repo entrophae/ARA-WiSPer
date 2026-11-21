@@ -255,7 +255,7 @@ const SettingModelDropdown = {
             this.isLoading = true;
             try {
                 const localHost = window.location.protocol === 'file:'
-                    ? 'http://127.0.0.1:8080'
+                    ? `http://${appStore.host}${appStore.port ? `:${appStore.port}` : ''}`
                     : window.location.protocol + '//' + window.location.host;
 
                 const cacheKey = `ara_model_cache_${this.fieldId}_${appStore.apiData[this.fieldId] || 'default'}`;

@@ -2,7 +2,8 @@ const { reactive } = Vue;
 
 const appStore = reactive({
     constants: {},
-    host: document.domain,
+    host: window.location.hostname,
+    port: window.location.port || null,
     isConnected: false,
     isLLMMode: false,
     isSTTConnected: false,
