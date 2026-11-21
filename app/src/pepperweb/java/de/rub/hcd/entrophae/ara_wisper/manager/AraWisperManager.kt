@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import de.rub.hcd.entrophae.ara_wisper.network.installConscryptSecurity
 import kotlinx.coroutines.flow.MutableStateFlow
 
 object AraWisperManager : Application.ActivityLifecycleCallbacks {
