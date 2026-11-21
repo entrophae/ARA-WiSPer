@@ -27,6 +27,9 @@ import androidx.compose.ui.unit.dp
 import de.rub.hcd.entrophae.ara_wisper.network.installConscryptSecurity
 import de.rub.hcd.entrophae.ara_wisper.server.manager.DashboardVideoManager
 import kotlinx.coroutines.flow.MutableStateFlow
+import java.net.Inet4Address
+import java.net.NetworkInterface
+import java.net.SocketException
 
 object AraWisperManager : Application.ActivityLifecycleCallbacks {
     private var webServer: AraWisperServer? = null
