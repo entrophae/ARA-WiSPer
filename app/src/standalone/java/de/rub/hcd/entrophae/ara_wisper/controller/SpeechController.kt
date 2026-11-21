@@ -1,22 +1,32 @@
 package de.rub.hcd.entrophae.ara_wisper.controller
 
-import android.content.Context
+import android.os.Bundle
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.collections.remove
+import java.util.concurrent.atomic.AtomicInteger
 
 class SpeechController {
-    private val lock = Any()
-    private val sentenceBuffer = java.lang.StringBuilder()
-    private var textToSpeech: TextToSpeech? = null
-    private var isTtsInitialized = false
+    private data class TtsTask(
+        val generation: Int,
+        val tempFile: File?,
+        val onPcmReady: ((ByteArray) -> Unit)?
+    )
 
-    private val pendingTtsTasks = ConcurrentHashMap<String, Pair<File, (ByteArray) -> Unit>>()
+    private val lock = Any()
+    private val speechGeneration = AtomicInteger(0)
+    private val pendingTasks = ConcurrentHashMap<String, TtsTask>()
+
+    private var textToSpeech: TextToSpeech? = null
+    @Volatile
+    private var isTtsInitialized = false
     private var onFlushComplete: (() -> Unit)? = null
+
+    var onSpeakingStateChanged: ((Boolean) -> Unit)? = null
 
     init {
         textToSpeech = TextToSpeech(AraWisperManager.appContext) { status ->
@@ -35,11 +45,16 @@ class SpeechController {
     }
 
     private fun setupTtsListener() {
-        textToSpeech?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
-            override fun onStart(id: String?) {}
+        textToSpeech?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(id: String?) {
+                val task = id?.let { pendingTasks[it] } ?: return
+                if (task.generation == speechGeneration.get()) {
+                    onSpeakingStateChanged?.invoke(true)
+                }
+            }
 
             override fun onDone(id: String?) {
-                handleTaskCompletion(id)
+                handleTaskCompletion(id, isError = false)
             }
 
             @Deprecated("Deprecated in Java")
@@ -49,94 +64,100 @@ class SpeechController {
         })
     }
 
-    private fun handleTaskCompletion(id: String?, isError: Boolean = false) {
-        val task = pendingTtsTasks.remove(id)
-        if (task != null) {
-            val tempFile = task.first
-            val onPcmReady = task.second
-            if (!isError && tempFile.exists()) {
+    fun speak(sentence: String, onPcmReady: ((ByteArray) -> Unit)? = null) {
+        if (!isTtsInitialized || textToSpeech == null || sentence.isBlank()) return
+
+        val cleanText = sentence
+            .replace("*", "")
+            .replace(Regex("[\\x{10000}-\\x{10FFFF}]"), "")
+            .trim()
+        if (cleanText.isEmpty()) return
+
+        val generation = speechGeneration.get()
+        val utteranceId = "utterance_${System.nanoTime()}"
+
+        if (onPcmReady != null) {
+            val tempFile = File(AraWisperManager.appContext.cacheDir, "tts_${System.nanoTime()}.wav")
+            pendingTasks[utteranceId] = TtsTask(generation, tempFile, onPcmReady)
+            textToSpeech?.synthesizeToFile(cleanText, Bundle(), tempFile, utteranceId)
+        } else {
+            pendingTasks[utteranceId] = TtsTask(generation, tempFile = null, onPcmReady = null)
+            textToSpeech?.speak(cleanText, TextToSpeech.QUEUE_ADD, null, utteranceId)
+        }
+    }
+
+    private fun handleTaskCompletion(id: String?, isError: Boolean) {
+        val task = id?.let { pendingTasks.remove(it) } ?: return
+        val isCurrentGen = (task.generation == speechGeneration.get())
+
+        if (task.tempFile != null) {
+            if (!isError && isCurrentGen && task.tempFile.exists()) {
                 try {
-                    val fileBytes = tempFile.readBytes()
-                    val pcmData = if (fileBytes.size > 44) fileBytes.copyOfRange(44, fileBytes.size) else ByteArray(0)
+                    val fileBytes = task.tempFile.readBytes()
+                    val pcmData = if (fileBytes.size > 44) {
+                        fileBytes.copyOfRange(44, fileBytes.size)
+                    } else {
+                        ByteArray(0)
+                    }
                     if (pcmData.isNotEmpty()) {
-                        onPcmReady(pcmData)
+                        task.onPcmReady?.invoke(pcmData)
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to read synthesized audio file", e)
                 }
             }
-            tempFile.delete()
+            task.tempFile.delete()
         }
+
+        val flushCallback: (() -> Unit)?
+        val allFinished: Boolean
         synchronized(lock) {
-            if (pendingTtsTasks.isEmpty()) {
-                onFlushComplete?.invoke()
+            allFinished = pendingTasks.isEmpty()
+            flushCallback = if (allFinished) {
+                val cb = onFlushComplete
                 onFlushComplete = null
-            }
-        }
-    }
-
-    fun processTextChunk( text: String, onPcmReady: ((ByteArray) -> Unit)?) {
-        Log.i("SPEAK", text)
-        if (text.isBlank()) return
-
-        sentenceBuffer.append(text)
-        val currentText = sentenceBuffer.toString()
-
-        val lastPunctuation = maxOf(
-            currentText.lastIndexOf('.'),
-            currentText.lastIndexOf('!'),
-            currentText.lastIndexOf('?')
-        )
-
-        if (lastPunctuation != -1) {
-            val sentenceToSpeak = currentText.substring(0, lastPunctuation + 1)
-            sentenceBuffer.delete(0, lastPunctuation + 1)
-            speakSentence(sentenceToSpeak, onPcmReady)
-        } else {
-            sentenceBuffer.delete(0, text.length)
-            speakSentence(currentText, onPcmReady)
-        }
-    }
-
-    fun flush(onPcmReady: ((ByteArray) -> Unit)?, onComplete: (() -> Unit)? = null) {
-        val leftoverText = sentenceBuffer.toString()
-        if (leftoverText.isNotBlank()) {
-            speakSentence(leftoverText, onPcmReady)
-            sentenceBuffer.clear()
-        }
-
-        synchronized(lock) {
-            if (pendingTtsTasks.isEmpty()) {
-                onComplete?.invoke()
+                cb
             } else {
-                onFlushComplete = onComplete
+                null
+            }
+        }
+
+        if (allFinished) {
+            onSpeakingStateChanged?.invoke(false)
+            flushCallback?.invoke()
+        }
+    }
+
+
+    fun flush(onComplete: () -> Unit) {
+        synchronized(lock) {
+            if (pendingTasks.isEmpty()) {
+                onComplete()
+            } else {
+                val previousCallback = onFlushComplete
+                onFlushComplete = {
+                    previousCallback?.invoke()
+                    onComplete()
+                }
             }
         }
     }
 
-    private fun speakSentence(sentence: String, onPcmReady: ((ByteArray) -> Unit)?) {
-        if (!isTtsInitialized || textToSpeech == null || sentence.isBlank()) return
-        val cleanText = sentence.replace("*", "").replace(Regex("[\\x{10000}-\\x{10FFFF}]"), "")
-
-        if (onPcmReady != null) {
-            val tempFile = File(AraWisperManager.appContext.cacheDir, "tts_${System.nanoTime()}.wav")
-            val utteranceId = "utterance_${System.nanoTime()}"
-
-            pendingTtsTasks[utteranceId] = Pair(tempFile, onPcmReady)
-
-            val params = android.os.Bundle()
-            textToSpeech?.synthesizeToFile(cleanText.trim(), params, tempFile, utteranceId)
-        } else {
-            textToSpeech?.speak(cleanText.trim(), TextToSpeech.QUEUE_ADD, null, "SpeechControllerTTS")
-        }
-    }
 
     fun stopAll() {
-        sentenceBuffer.clear()
+        speechGeneration.incrementAndGet()
         textToSpeech?.stop()
-        pendingTtsTasks.values.forEach { it.first.delete() }
-        pendingTtsTasks.clear()
-        onFlushComplete = null
+
+        val flushCallback: (() -> Unit)?
+        synchronized(lock) {
+            pendingTasks.values.forEach { it.tempFile?.delete() }
+            pendingTasks.clear()
+            flushCallback = onFlushComplete
+            onFlushComplete = null
+        }
+
+        onSpeakingStateChanged?.invoke(false)
+        flushCallback?.invoke()
     }
 
     fun destroy() {

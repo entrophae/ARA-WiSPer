@@ -2,85 +2,121 @@ package de.rub.hcd.entrophae.ara_wisper.controller
 
 import android.util.Log
 import com.aldebaran.qi.Future
+import com.aldebaran.qi.sdk.QiContext
 import com.aldebaran.qi.sdk.builder.SayBuilder
-import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
+import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
+import java.util.concurrent.atomic.AtomicInteger
 
 class SpeechController {
-    private val sentenceBuffer = java.lang.StringBuilder()
+    private val queueLock = Any()
     private var activeSayFuture: Future<Void>? = null
 
-    fun processTextChunk(text: String, onPcmReady: ((ByteArray) -> Unit)?) {
-        if (text.isBlank()) return
+    private val speechGeneration = AtomicInteger(0)
+    private val inFlightUtterances = AtomicInteger(0)
 
-        sentenceBuffer.append(text)
-        val currentText = sentenceBuffer.toString()
+    var onSpeakingStateChanged: ((Boolean) -> Unit)? = null
 
-        val lastPunctuation = maxOf(
-            currentText.lastIndexOf('.'),
-            currentText.lastIndexOf('!'),
-            currentText.lastIndexOf('?')
-        )
+    fun speak(sentence: String, onPcmReady: ((ByteArray) -> Unit)? = null) {
+        if (sentence.isBlank()) return
 
-        if (lastPunctuation != -1) {
-            val sentenceToSpeak = currentText.substring(0, lastPunctuation + 1)
-            sentenceBuffer.delete(0, lastPunctuation + 1)
-            speakSentence(sentenceToSpeak, onPcmReady)
-        } else {
-            sentenceBuffer.delete(0, text.length)
-            speakSentence(currentText, onPcmReady)
+        val context = AraWisperManager.chatActivityAdapter?.qiContext as? QiContext
+        if (context == null) {
+            Log.w(TAG, "Cannot speak '$sentence': qiContext is null")
+            return
+        }
+
+        val generation = speechGeneration.get()
+        if (inFlightUtterances.getAndIncrement() == 0) {
+            onSpeakingStateChanged?.invoke(true)
+        }
+
+        val startSay = fun(): Future<Void>? {
+            if (speechGeneration.get() != generation) return null
+            val buildFuture = SayBuilder.with(context)
+                .withText(sentence)
+                .buildAsync() ?: return null
+
+            return buildFuture.andThenCompose { say ->
+                if (speechGeneration.get() != generation || say == null) {
+                    null
+                } else {
+                    Log.i(TAG, "Saying: '$sentence'")
+                    say.async().run()
+                }
+            }
+        }
+
+        val chainedFuture: Future<Void>? = synchronized(queueLock) {
+            val previous = activeSayFuture
+            val next = if (previous == null || previous.isDone) {
+                startSay()
+            } else {
+                previous.thenCompose<Void> { startSay() }
+            }
+            activeSayFuture = next
+            next
+        }
+
+        if (chainedFuture == null) {
+            onUtteranceFinished(generation)
+            return
+        }
+
+        chainedFuture.thenConsume { future ->
+            if (future.hasError() && !future.isCancelled) {
+                Log.e(TAG, "QiSDK Say failed for '$sentence': ${future.errorMessage}")
+            }
+            onUtteranceFinished(generation)
         }
     }
 
-    fun flush(onPcmReady: ((ByteArray) -> Unit)?, onComplete: (() -> Unit)? = null) {
-        val leftoverText = sentenceBuffer.toString()
-        if (leftoverText.isNotBlank()) {
-            speakSentence(leftoverText, onPcmReady)
-            sentenceBuffer.clear()
-        }
-
-        val future = activeSayFuture
-        if (future == null) {
-            onComplete?.invoke()
+    fun flush(onComplete: () -> Unit) {
+        val future = synchronized(queueLock) { activeSayFuture }
+        if (future == null || future.isDone || inFlightUtterances.get() == 0) {
+            onComplete()
         } else {
             future.thenConsume {
-                onComplete?.invoke()
+                onComplete()
             }
-        }
-    }
-    private fun speakSentence(sentence: String, onPcmReady: ((ByteArray) -> Unit)?) {
-        if (sentence.isBlank()) return
-        try {
-            val qiContext = AraWisperManager.chatActivityAdapter?.toolContext?.qiContext ?: return
-            val sayAction = SayBuilder.with(qiContext).withText(sentence.trim()).build()
-
-            val currentFuture = activeSayFuture
-            if (currentFuture == null || currentFuture.isDone) {
-                activeSayFuture = sayAction.async().run()
-            } else {
-                activeSayFuture = currentFuture.andThenCompose { sayAction.async().run() }
-            }
-        } catch (e: Exception) {
-            Log.e("SpeechController", "Failed to build or run Say action", e)
         }
     }
 
     fun stopAll() {
-        sentenceBuffer.clear()
-        activeSayFuture?.let { future ->
-            if (!future.isDone) {
-                try { future.requestCancellation() } catch (e: Exception) { Log.w("SpeechController", "Failed to cancel speech future", e) }
+        speechGeneration.incrementAndGet()
+        inFlightUtterances.set(0)
+
+        val futureToCancel = synchronized(queueLock) {
+            val current = activeSayFuture
+            activeSayFuture = null
+            current
+        }
+
+        if (futureToCancel != null && !futureToCancel.isDone) {
+            try {
+                futureToCancel.requestCancellation()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to cancel speech future", e)
             }
         }
-        activeSayFuture = null
+        onSpeakingStateChanged?.invoke(false)
     }
 
     fun destroy() {
         stopAll()
     }
 
+    private fun onUtteranceFinished(generation: Int) {
+        if (speechGeneration.get() != generation) return
+        val remaining = inFlightUtterances.updateAndGet { current ->
+            if (current > 0) current - 1 else 0
+        }
+        if (remaining == 0) {
+            onSpeakingStateChanged?.invoke(false)
+        }
+    }
+
     companion object {
-        private const val TAG = "SpeechController[STUB]"
+        private const val TAG = "SpeechController[Pepper]"
     }
 
 }
