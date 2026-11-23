@@ -1,6 +1,7 @@
 package de.rub.hcd.entrophae.ara_wisper.server.data
 
 import android.util.Log
+import de.rub.hcd.entrophae.ara_wisper.interceptor.ToolSynchronizer
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.ConcurrentHashMap
@@ -29,6 +30,7 @@ data class ChatTurn(
 ) {
     val completedAppTools: MutableSet<String> = ConcurrentHashMap.newKeySet()
     val completedToolResults: MutableList<Pair<String, String>> = CopyOnWriteArrayList()
+    val toolSynchronizer: ToolSynchronizer = ToolSynchronizer()
     @Volatile var appToolRounds: Int = 0
     var queryWaitingForTool: String = ""
 
@@ -47,6 +49,7 @@ data class ChatTurn(
     fun resetToolState() {
         completedAppTools.clear()
         completedToolResults.clear()
+        toolSynchronizer.reset()
         appToolRounds = 0
         queryWaitingForTool = ""
     }

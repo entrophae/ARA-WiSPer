@@ -33,6 +33,9 @@ class ProxyPipelineManager(
     @OptIn(ExperimentalCoroutinesApi::class)
     private val audioSendDispatcher = Dispatchers.IO.limitedParallelism(1)
 
+    private val pendingAppToolCallIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private var pendingToolTurnId: String? = null
+
     val currentUserId: String
         get() = ProxySettingsRepository.activeUserId
 
@@ -51,7 +54,7 @@ class ProxyPipelineManager(
     var latestUserText = "" // Lifetime until used by LLM
 
     private val isTurnBusy: Boolean
-        get() = isPipelineRunning || isWaitingForAppToolResult
+        get() = isPipelineRunning || pendingAppToolCallIds.isNotEmpty() || isWaitingForAppToolResult
 
     fun handleSessionUpdate(json: JSONObject, rawJson: String){
         DashboardManager.sendLog(rawJson, true)
@@ -61,7 +64,7 @@ class ProxyPipelineManager(
         val instructions = sessionObj?.optString("instructions", "")
         if (!instructions.isNullOrEmpty()) {
             ProxySettingsRepository.customSystemPrompt = instructions
-            Log.i(ProxySettingsRepository.TAG, "Proxy intercepted new system prompt!")
+            Log.i(TAG, "Proxy intercepted new system prompt!")
         }
 
         val tools = sessionObj?.optJSONArray("tools")
@@ -72,7 +75,7 @@ class ProxyPipelineManager(
             for (i in 0 until tools.length()) {
                 toolNames.add(tools.getJSONObject(i).optString("name", "unknown"))
             }
-            Log.i(ProxySettingsRepository.TAG, "Proxy loaded tools: $toolNames")
+            Log.i(TAG, "Proxy loaded tools: $toolNames")
         }
 
         audioProcessor.reconfigure()
@@ -91,7 +94,7 @@ class ProxyPipelineManager(
             val rawBytes = decode(audioData, Base64.NO_WRAP)
             processAudio(rawBytes)
         } catch (e: IllegalArgumentException) {
-            Log.e(ProxySettingsRepository.TAG, "Failed to decode audio base64", e)
+            Log.e(TAG, "Failed to decode audio base64", e)
         }
     }
 
@@ -129,14 +132,19 @@ class ProxyPipelineManager(
 
     fun handleRespCreate(rawJson: String){
         DashboardManager.sendLog(rawJson, isFromRobot = true)
-        this.isResponseCancelled = false;
+        this.isResponseCancelled = false
         updateIsResponseCancelled(false)
-        // AraWisperManager.speechManager.stop()
 
         val textToProcess = latestUserText
         if (textToProcess.isNotEmpty()) {
+            val isToolResume = isHoldingToolResult
             val itemId = this.currentTurn?.turnId ?: ""
-            this.currentTurn = ChatTurn.resolve(currentTurn, currentUserId, itemId, textToProcess)
+
+            if (!isToolResume || this.currentTurn == null) {
+                this.currentTurn = ChatTurn.resolve(currentTurn, currentUserId, itemId, textToProcess).apply {
+                    resetToolState()
+                }
+            }
 
             latestUserText = ""
             audioProcessor.reset()
@@ -162,6 +170,15 @@ class ProxyPipelineManager(
 
     private fun processToolOutputItem(itemObj: JSONObject) {
         val toolCallId = itemObj.optString("call_id", itemObj.optString("tool_call_id", ""))
+
+        // Ignore stale tool outputs from canceled or superseded turns
+        if (isResponseCancelled || (pendingToolTurnId != null && pendingToolTurnId != currentTurn?.turnId)) {
+            Log.w(ProxySettingsRepository.TAG, "Ignoring stale tool output for call_id=$toolCallId")
+            pendingAppToolCallIds.remove(toolCallId)
+            isWaitingForAppToolResult = pendingAppToolCallIds.isNotEmpty()
+            return
+        }
+
         val toolOutput = itemObj.optString("output", "")
         val toolAnswer = if (toolOutput.isNotBlank()) {
             try {
@@ -172,40 +189,73 @@ class ProxyPipelineManager(
             }
         } else ""
 
-        Log.i(ProxySettingsRepository.TAG, "Tool-Ergebnis abgefangen: $toolAnswer \n\n")
+        Log.i(TAG, "Tool-Ergebnis abgefangen ($toolCallId): $toolAnswer \n\n")
 
         val turn = currentTurn
+        val completedToolName = turn?.toolsUsed?.find { it.callId == toolCallId }?.name ?: "tool"
         turn?.addToolAnswer(toolCallId, toolAnswer)
+        turn?.completedToolResults?.add(completedToolName to toolAnswer)
+        pendingAppToolCallIds.remove(toolCallId)
 
-        val activeQuery = turn?.userQuery ?: ""
+        // Wait until all parallel app tools in this turn have reported back
+        if (pendingAppToolCallIds.isNotEmpty()) {
+            return
+        }
+
         latestUserText = toolInterceptor.formatToolOutputPrompt(
-            activeQuery,
-            turn?.queryWaitingForTool.orEmpty(),
-            turn?.userImageUrl,
-            toolAnswer
+            turn = turn,
+            toolAnswer = toolAnswer,
+            completedToolName = completedToolName
         )
 
         turn?.queryWaitingForTool = ""
         isWaitingForAppToolResult = false
         isHoldingToolResult = true // Protect this context until the LLM reads it
+
+        // Fallback: if the app tool is fire-and-forget and never sends response.create,
+        // persist the turn and release isHoldingToolResult after a short grace window
+        val expectedTurnId = turn?.turnId
+        serverScope.launch {
+            kotlinx.coroutines.delay(1500L)
+            if (isHoldingToolResult && !isPipelineRunning && currentTurn?.turnId == expectedTurnId) {
+                Log.i(ProxySettingsRepository.TAG, "Fire-and-forget tool completed without response.create; finalizing turn.")
+                isHoldingToolResult = false
+                latestUserText = ""
+                persistTurnData()
+                markTurnListening(stopSpeech = false, clearCooldown = false)
+            }
+        }
     }
 
     private fun processImageItem(imageUrl: String) {
-        Log.i(ProxySettingsRepository.TAG, "Proxy intercepted image payload! Caching for VLM.")
+        Log.i(TAG, "Proxy intercepted image payload! Caching for VLM.")
 
         this.currentTurn?.let { turn ->
             turn.userImageUrl = imageUrl
             // Instantly push this image to the dashboard live log for this item ID
-            DashboardManager.updateChat(turnId = turn.turnId, isUser = true, userImageUrl = imageUrl)
+            try {
+                DashboardManager.updateChat(turnId = turn.turnId, isUser = true, userImageUrl = imageUrl)
+            } catch (t: Throwable) {
+                Log.e(TAG, "DashboardManager.updateChat failed for image payload", t)
+            }
         }
 
-        AraWisperManager.dashboardVideoManager.restartCameraStream()
+        // Only restart dashboard stream if we are not actively waiting on a vision tool result
+        if (!isWaitingForAppToolResult) {
+            try {
+                AraWisperManager.dashboardVideoManager.restartCameraStream()
+            } catch (t: Throwable) {
+                Log.e(TAG, "Failed to restart dashboard camera stream", t)
+            }
+        }
     }
 
     private fun processManualCommandItem(cleanText: String, nativeItemId: String) {
         isHoldingToolResult = false
         isWaitingForAppToolResult = false
-        this.currentTurn = ChatTurn.resolve(currentTurn, currentUserId, nativeItemId, cleanText)
+        this.currentTurn = ChatTurn.resolve(currentTurn, currentUserId, nativeItemId, cleanText).apply {
+            resetToolState()
+        }
 
         latestUserText = cleanText
 
@@ -220,11 +270,11 @@ class ProxyPipelineManager(
 
     private fun processSystemEventItem(cleanText: String, nativeItemId: String) {
         // Asynchronous System Event (like "[MOVEMENT COMPLETED]" or "📷 Opening Camera")
-        Log.i(ProxySettingsRepository.TAG, "Proxy intercepted System Event: $cleanText")
+        Log.i(TAG, "Proxy intercepted System Event: $cleanText")
 
         // Drop late system noise to protect active tool context
         if (isHoldingToolResult) {
-            Log.i(ProxySettingsRepository.TAG, "Dropped system noise to protect active tool context.")
+            Log.i(TAG, "Dropped system noise to protect active tool context.")
             return
         }
 
@@ -240,9 +290,11 @@ class ProxyPipelineManager(
 
         // Append to current turn if LLM hasn't responded yet, otherwise create a new turn
         if (this.currentTurn == null || this.currentTurn?.llmResponse?.isNotEmpty() == true) {
-            this.currentTurn = ChatTurn.resolve(this.currentTurn, currentUserId, nativeItemId, cleanText, isSystem = true)
+            this.currentTurn = ChatTurn.resolve(this.currentTurn, currentUserId, nativeItemId, cleanText, isSystem = true).apply {
+                resetToolState()
+            }
         } else {
-            Log.i(ProxySettingsRepository.TAG, "Appended system event to ongoing turn. Preserving DB save state.")
+            Log.i(TAG, "Appended system event to ongoing turn. Preserving DB save state.")
         }
 
         DashboardManager.sendChat(
@@ -288,7 +340,9 @@ class ProxyPipelineManager(
         if (audioData.isEmpty() || initialText.isNotBlank()) return initialText
 
         // Otherwise, process audio transcription with an empty turn being initiated first
-        this.currentTurn = ChatTurn.resolve(currentTurn, currentUserId, itemId, initialText)
+        this.currentTurn = ChatTurn.resolve(currentTurn, currentUserId, itemId, initialText).apply {
+            resetToolState()
+        }
         sendToApp(WebSocketPayloads.userItemPlaceholder(itemId))
 
         val transcribedText = withContext(Dispatchers.IO) {
@@ -310,9 +364,9 @@ class ProxyPipelineManager(
         var currentContext = initialContext
         var loopBreaker = 0
 
-        while (loopBreaker < 2) {
+        while (loopBreaker < MAX_APP_TOOL_ROUNDS_PER_TURN) {
             if (this.currentTurn == null) {
-                Log.e( ProxySettingsRepository.TAG, "Current Turn is null. Can't continue agentic loop")
+                Log.e(TAG, "Current Turn is null. Can't continue agentic loop")
                 return
             }
             loopBreaker++
@@ -325,11 +379,6 @@ class ProxyPipelineManager(
 
             // LLM has safely consumed the context
             isHoldingToolResult = false
-            if (this.currentTurn?.userImageUrl.isNullOrBlank()) {
-                isHoldingToolResult = false
-            }
-
-            // this.currentTurn?.userImageUrl = null
 
             val (updatedContext, continueLoop) = processLlmMessage(llmMessageObj, currentContext, pipelineContext)
 
@@ -351,37 +400,138 @@ class ProxyPipelineManager(
         }
     }
 
+    private fun isRepeatAppToolBlocked(toolName: String, turn: ChatTurn?): Boolean {
+        return (toolName in SINGLE_SHOT_TOOLS && turn?.completedAppTools?.contains(toolName) == true) ||
+                (turn?.appToolRounds ?: 0) >= MAX_APP_TOOL_ROUNDS_PER_TURN
+    }
+
     private suspend fun executeToolPhase(llmMessageObj: JSONObject, initialLlmText: String, currentContext: String, pipelineContext: PipelineContext): Pair<String, Boolean> {
-        val (toolName, toolArgs, cleanedText) = LlmClient.extractToolInformation(llmMessageObj, initialLlmText)
+        val toolCallsArray = llmMessageObj.optJSONArray("tool_calls")
+        val (_, _, cleanedText) = LlmClient.extractToolInformation(llmMessageObj, initialLlmText)
+        val turn = this.currentTurn
 
-        val rawCallId = llmMessageObj.optJSONArray("tool_calls")?.optJSONObject(0)?.optString("id")
-        val toolCallId = if (!rawCallId.isNullOrBlank()) rawCallId else "call_${System.currentTimeMillis()}"
+        // Handle multi-tool responses
+        if (toolCallsArray != null && toolCallsArray.length() > 0) {
+            // Only speak thinking/filler text if at least one tool in this batch will actually run
+            var hasExecutableTool = false
+            for (i in 0 until toolCallsArray.length()) {
+                val callObj = toolCallsArray.optJSONObject(i) ?: continue
+                val fnObj = callObj.optJSONObject("function")
+                val name = fnObj?.optString("name")?.takeIf { it.isNotBlank() }
+                    ?: callObj.optString("name", "")
+                if (name.isNotBlank() && !isRepeatAppToolBlocked(name, turn)) {
+                    hasExecutableTool = true
+                    break
+                }
+            }
 
-        // Treat any text generated alongside the tool call as "thinking" text
-        processLlmText(cleanedText, pipelineContext, isThinkingText = true)
+            if (hasExecutableTool && cleanedText.isNotBlank()) {
+                processLlmText(cleanedText, pipelineContext, isThinkingText = true)
+                turn?.toolSynchronizer?.recordSpokenText(cleanedText)
+                DashboardManager.sendChat(isUser = false, text = cleanedText)
+                flushSpeechAudio(pipelineContext)
+            }
 
+            var rollingContext = currentContext
+            var allExecutedLocally = true
+            val seenSignaturesInBatch = mutableSetOf<String>()
+
+            for (i in 0 until toolCallsArray.length()) {
+                val callObj = toolCallsArray.optJSONObject(i) ?: continue
+                val fnObj = callObj.optJSONObject("function")
+                val name = fnObj?.optString("name")?.takeIf { it.isNotBlank() }
+                    ?: callObj.optString("name", "")
+                val args = fnObj?.optString("arguments") ?: callObj.optString("arguments", "{}")
+                val callId = callObj.optString("id").takeIf { it.isNotBlank() }
+                    ?: "call_${System.currentTimeMillis()}_$i"
+
+                if (name.isBlank()) continue
+
+                // Deduplicate identical calls in the same tool_calls batch
+                val signature = if (name in SINGLE_SHOT_TOOLS) name else "$name:$args"
+                if (!seenSignaturesInBatch.add(signature)) {
+                    Log.w(TAG, "Skipping duplicate parallel tool call: $signature")
+                    continue
+                }
+
+                if (isRepeatAppToolBlocked(name, turn)) {
+                    Log.w(ProxySettingsRepository.TAG, "Blocking repeat app tool '$name' in same turn; forcing direct answer.")
+                    rollingContext = """
+                        $rollingContext
+
+                        ## System-Info ($name):
+                        Das Tool '$name' wurde in diesem Zug bereits ausgeführt und das Ergebnis liegt dir bereits vor. Rufe '$name' NICHT erneut auf. Nutze die vorhandenen Informationen (und rufe bei Bedarf nur noch ein anderes angefordertes Tool auf, falls noch ein Teil der Anfrage offen ist).
+                    """.trimIndent()
+                    continue
+                }
+
+                val (nextContext, executedLocally) = handleToolCall(
+                    name, args, callId, rollingContext, pipelineContext, turn
+                )
+                rollingContext = nextContext
+
+                if (!executedLocally) {
+                    allExecutedLocally = false
+                    turn?.completedAppTools?.add(name)
+                    pendingAppToolCallIds.add(callId)
+                    pendingToolTurnId = turn?.turnId
+                }
+            }
+
+            return if (allExecutedLocally) {
+                Log.i(TAG, "Local tool executed. Looping back with content: $rollingContext")
+                Pair(rollingContext, true) // true = keep looping to let LLM read the local result
+            } else {
+                turn?.let {
+                    it.appToolRounds++
+                    it.queryWaitingForTool = it.userQuery
+                }
+                isWaitingForAppToolResult = true
+                Pair(rollingContext, false) // false = break loop, wait for external app packet
+            }
+        }
+
+        // single non-array tool
+        val (toolName, toolArgs, _) = LlmClient.extractToolInformation(llmMessageObj, initialLlmText)
         if (toolName == null) {
             pipelineContext.sendTranscriptDelta("Error")
             return Pair(currentContext, false)
         }
 
-        if (cleanedText.isNotBlank()) {
-            DashboardManager.sendChat(isUser = false, text = cleanedText)
+        if (isRepeatAppToolBlocked(toolName, turn)) {
+            val forcedContext = """
+                $currentContext
+    
+                ## System-Info ($toolName):
+                Das Tool '$toolName' wurde in diesem Zug bereits ausgeführt. Rufe '$toolName' NICHT erneut auf.
+            """.trimIndent()
+            return Pair(forcedContext, true)
         }
 
+        if (cleanedText.isNotBlank()) {
+            processLlmText(cleanedText, pipelineContext, isThinkingText = true)
+            turn?.toolSynchronizer?.recordSpokenText(cleanedText)
+            DashboardManager.sendChat(isUser = false, text = cleanedText)
+            flushSpeechAudio(pipelineContext)
+        }
+
+        val toolCallId = "call_${System.currentTimeMillis()}"
         val (updatedContext, executedLocally) = handleToolCall(
-            toolName, toolArgs, toolCallId,
-            currentContext, pipelineContext,
-            this.currentTurn
+            toolName, toolArgs, toolCallId, currentContext, pipelineContext, turn
         )
 
-        if (executedLocally) {
-            Log.i(ProxySettingsRepository.TAG, "Local tool executed. Looping back with content:  $updatedContext")
-            return Pair(updatedContext, true) // true = keep looping to let LLM read the local result
+        return if (executedLocally) {
+            Pair(updatedContext, true)
         } else {
+            turn?.let {
+                it.completedAppTools.add(toolName)
+                it.appToolRounds++
+                it.queryWaitingForTool = it.userQuery
+            }
+            pendingAppToolCallIds.add(toolCallId)
+            pendingToolTurnId = turn?.turnId
             isWaitingForAppToolResult = true
-            currentTurn?.queryWaitingForTool = currentTurn?.userQuery ?: "" // Cache query in case user speaks while waiting
-            return Pair(currentContext, false) // false = break loop, wait for external app packet
+            Pair(currentContext, false)
         }
     }
 
@@ -394,10 +544,21 @@ class ProxyPipelineManager(
 
         currentTurn?.addToolCall(toolCallId, toolName, query)
 
+        currentTurn?.toolSynchronizer?.awaitBeforeToolExecution(toolName) { isResponseCancelled }
+
         // Run tool execution on Dispatchers.IO so blocking RAG/HTTP calls never stall audio streaming
         return withContext(Dispatchers.IO) {
             toolInterceptor.processToolCall(toolArgs, toolCallId, currentContext, currentTurn, pipelineContext)
         }
+    }
+
+    private suspend fun flushSpeechAudio(pipelineContext: PipelineContext) {
+        AraWisperManager.speechManager.flush { pcmBytes ->
+            currentTurn?.audioBuffer?.write(pcmBytes)
+            val base64Audio = Base64.encodeToString(pcmBytes, Base64.NO_WRAP)
+            pipelineContext.enqueueAudioDelta(serverScope, base64Audio)
+        }
+        pipelineContext.awaitAudioFlushed()
     }
 
     private suspend fun processLlmText(llmText: String, pipelineContext: PipelineContext, isThinkingText: Boolean = false) {
@@ -416,14 +577,7 @@ class ProxyPipelineManager(
 
     private suspend fun finalizePipelineTurn(pipelineContext: PipelineContext) {
         // Flush speech engine and wait until all TTS/Qi audio processing is complete
-        AraWisperManager.speechManager.flush() { pcmBytes ->
-            currentTurn?.audioBuffer?.write(pcmBytes)
-            val base64Audio = Base64.encodeToString(pcmBytes, Base64.NO_WRAP)
-            pipelineContext.enqueueAudioDelta(serverScope, base64Audio)
-        }
-
-        // Ensure every response.audio.delta reaches ChatRealtimeHandler BEFORE response.done
-        pipelineContext.awaitAudioFlushed()
+        flushSpeechAudio(pipelineContext)
 
         // Dispatch turn completion signals to client
         pipelineContext.sendAudioDone()
@@ -440,7 +594,7 @@ class ProxyPipelineManager(
         val turn = currentTurn ?: return
 
         Log.i(
-            ProxySettingsRepository.TAG,
+            TAG,
             "READY FOR DB: ${turn.turnId} | Q: ${turn.userQuery} | A: ${turn.llmResponse} | Tool: ${turn.toolCalled} | ToolBuffer: ${turn.toolBufferResponse}"
         )
 
@@ -449,10 +603,7 @@ class ProxyPipelineManager(
         if (!turn.isSystemEvent) {
             DataBaseClient.updateHistory(turn)
         } else {
-            Log.i(
-                ProxySettingsRepository.TAG,
-                "System event turn completed. Bypassing DB save to protect user knowledge."
-            )
+            Log.i( TAG, "System event turn completed. Bypassing DB save to protect user knowledge." )
         }
     }
 
@@ -524,9 +675,13 @@ class ProxyPipelineManager(
     fun updateIsResponseCancelled(cancelled: Boolean) {
         this.isResponseCancelled = cancelled
         if (cancelled) {
-            Log.i(ProxySettingsRepository.TAG, "Interruption received! Cancelling proxy response.")
+            Log.i(TAG, "Interruption received! Cancelling proxy response.")
             currentTurn?.resetToolState()
+            pendingAppToolCallIds.clear()
+            pendingToolTurnId = null
             isWaitingForAppToolResult = false
+            isHoldingToolResult = false
+            latestUserText = ""
             markTurnListening(stopSpeech = true, clearCooldown = true)
         }
     }
@@ -542,5 +697,11 @@ class ProxyPipelineManager(
             logTurnState("Truncated via STT transcription", it)
             DataBaseClient.updateHistory(it)
         }
+    }
+
+    companion object {
+        private const val TAG = "ProxyPipelineManager"
+        private const val MAX_APP_TOOL_ROUNDS_PER_TURN = 4
+        private val SINGLE_SHOT_TOOLS = setOf("analyze_vision")
     }
 }

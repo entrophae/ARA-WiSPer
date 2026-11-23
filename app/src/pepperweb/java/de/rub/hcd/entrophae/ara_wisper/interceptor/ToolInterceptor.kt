@@ -61,8 +61,16 @@ class ToolInterceptor {
         return if (localResult != null) {
             // Tool executed locally, update context and continue loop
             currentTurn?.addToolAnswer(toolCallId, localResult)
+            currentTurn?.completedToolResults?.add(toolName to localResult)
 
-            val updatedContext  = formatLocalResultPrompt(currentContext, toolName, localResult)
+            val originalQuery = currentTurn?.userQuery?.takeIf { it.isNotBlank() } ?: currentContext
+            val updatedContext = formatLocalResultPrompt(
+                originalQuery = originalQuery,
+                toolName = toolName,
+                result = localResult,
+                allToolResults = currentTurn?.completedToolResults?.toList().orEmpty(),
+                spokenTextsInTurn = currentTurn?.toolSynchronizer?.getSpokenTexts().orEmpty()
+            )
             Pair(updatedContext, true)
         } else {
             // Tool not executed locally, send tool call packet and deactivate loop
@@ -110,20 +118,53 @@ class ToolInterceptor {
         }
     }
 
-    private fun formatLocalResultPrompt(currentContext: String, toolName: String, result: String): String {
+    private fun buildToolHistorySection( allToolResults: List<Pair<String, String>>,  fallbackToolName: String,  fallbackResult: String ): String {
+        if (allToolResults.isEmpty()) {
+            return "## System-Info (Bereits ausgeführtes Tool '$fallbackToolName'):\n$fallbackResult"
+        }
+        return buildString {
+            appendLine("## Bisherige Tool-Ergebnisse in diesem Zug (ALLE BEREITS AUSGEFÜHRT):")
+            allToolResults.forEachIndexed { index, (name, output) ->
+                appendLine("${index + 1}. [$name] (BEREITS ERLEDIGT): $output")
+            }
+        }.trimEnd()
+    }
+
+    private fun buildSpokenHistorySection(spokenTextsInTurn: List<String>): String {
+        if (spokenTextsInTurn.isEmpty()) return ""
+        return "\n\n## Bereits laut gesagter Text in diesem Zug (NICHT wiederholen):\n" +
+                spokenTextsInTurn.joinToString("\n")
+    }
+
+    private fun formatLocalResultPrompt(
+        originalQuery: String,
+        toolName: String,
+        result: String,
+        allToolResults: List<Pair<String, String>> = emptyList(),
+        spokenTextsInTurn: List<String> = emptyList()
+    ): String {
+        val toolSection = buildToolHistorySection(allToolResults, toolName, result)
+        val spokenSection = buildSpokenHistorySection(spokenTextsInTurn)
         return """
             ## Ursprüngliche Anfrage:
-            $currentContext
+            $originalQuery
             
-            ## System-Info (Tool-Ergebnis für '$toolName'):
-            $result 
+            $toolSection$spokenSection
             
             ## WICHTIGE ANWEISUNG:
-            Bitte antworte basierend auf diesem Ergebnis.
+            - Wiederhole KEINE bereits beantworteten Recherchen, Tool-Aufrufe oder bereits gesagten Sätze.
+            - Wenn noch eine andere Teilaufgabe ein bisher ungenutztes Tool erfordert, rufe es jetzt direkt auf.
+            - Wenn alle benötigten Informationen vorliegen (oder für einen Teil kein eigenes Tool existiert), beantworte nur noch die offenen Teile der ursprünglichen Anfrage vollständig, direkt und natürlich auf der Sprache der Anfrage.
         """.trimIndent()
     }
 
-    fun formatToolOutputPrompt(lastKnownUserQuery: String, queryWaitingForTool: String, userImageUrl: String?, toolAnswer: String): String {
+    fun formatToolOutputPrompt( turn: ChatTurn?,  toolAnswer: String,  completedToolName: String = "tool" ): String {
+        val lastKnownUserQuery = turn?.userQuery.orEmpty()
+        val queryWaitingForTool = turn?.queryWaitingForTool.orEmpty()
+        val userImageUrl = turn?.userImageUrl
+        val previousToolResults = turn?.completedToolResults?.toList().orEmpty()
+        val spokenTextsInTurn = turn?.toolSynchronizer?.getSpokenTexts().orEmpty()
+
         val combinedQuery = if (lastKnownUserQuery != queryWaitingForTool && queryWaitingForTool.isNotBlank()) {
             // The user asked something new while the tool was running! Combine them.
             "$queryWaitingForTool\n\n[Zusätzliche Nutzer-Frage während des Ladens]: $lastKnownUserQuery"
@@ -131,11 +172,23 @@ class ToolInterceptor {
             lastKnownUserQuery
         }
 
-        val isVisionResult = !userImageUrl.isNullOrBlank()
+        val isVisionResult = completedToolName == "analyze_vision" && !userImageUrl.isNullOrBlank()
+        val toolSection = buildToolHistorySection(previousToolResults, completedToolName, toolAnswer)
+        val spokenSection = buildSpokenHistorySection(spokenTextsInTurn)
+
         val instructions = if (isVisionResult) {
-            "Ein Foto wurde aufgenommen und dieser Nachricht als Bild angehängt. Schau dir das angehängte Bild genau an und beantworte die ursprüngliche Anfrage basierend auf dem, was du auf dem Bild siehst."
+            """
+                Ein Foto wurde aufgenommen und dieser Nachricht als Bild angehängt. Schau dir das angehängte Bild genau an.
+                - Wenn die ursprüngliche Anfrage nur das Bild betrifft, beantworte sie jetzt direkt auf Basis des Bildes (ohne einleitende Floskeln wie „Lass mich das Bild analysieren“).
+                - Wenn die ursprüngliche Anfrage zusätzlich eine weitere Aktion erfordert (z. B. eine Internetsuche), beschreibe zuerst kurz was du auf dem Bild siehst und rufe **im selben Schritt** direkt das nächste benötigte Tool über einen Tool-Call auf. Kündige weitere Tool-Aufrufe niemals nur im Text an.
+            """.trimIndent()
         } else {
-            "Beantworte die ursprüngliche Anfrage basierend auf der System-Info."
+            """
+                - Nutze die obigen Tool-Ergebnisse (und falls vorhanden das angehängte Bild). Wiederhole KEINE bereits erledigte Suche.
+                - Wenn noch eine weitere Teilaufgabe aus der ursprünglichen Anfrage ein anderes Tool erfordert (z. B. play_melody), beantworte zuerst die bereits vorliegenden Such-/Bild-Ergebnisse im Text (ohne bereits laut gesagten Text zu wiederholen) und rufe das nächste Tool **im selben Schritt** über einen Tool-Call auf.
+                - WICHTIG zu „Bereits laut gesagter Text in diesem Zug“: Wiederhole diese Fakten (z. B. die Anzahl der Finger) NICHT noch einmal! Gib nur noch die fehlenden Informationen aus.
+                - WICHTIG zu Aktions-Tools (wie play_melody oder play_animation): Wenn ein solches Tool oben als BEREITS ERLEDIGT steht, wurde die Melodie/Animation GERADE EBEN SCHON abgespielt. Sage auf keinen Fall „Ich spiele dir jetzt eine Melodie“ oder Ähnliches im Präsens/Futur — nutze höchstens die Vergangenheitsform (z. B. „Ich hoffe, die Melodie hat dir gefallen!“).
+            """.trimIndent()
         }
 
 
@@ -143,8 +196,7 @@ class ToolInterceptor {
             ## Ursprüngliche Anfrage:
             $combinedQuery
             
-            ## System-Info (Tool-Ergebnis):
-            $toolAnswer 
+            $toolSection$spokenSection
             
             ## WICHTIGE ANWEISUNG:
             $instructions
