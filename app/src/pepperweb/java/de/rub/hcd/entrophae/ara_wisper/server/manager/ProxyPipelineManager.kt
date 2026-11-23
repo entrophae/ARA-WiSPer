@@ -1,18 +1,17 @@
 package de.rub.hcd.entrophae.ara_wisper.server.manager
 
 import android.util.Base64
-import android.util.Log
 import android.util.Base64.decode
+import android.util.Log
 import ch.fhnw.pepper_realtime.manager.TurnManager
-import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
-import org.json.JSONObject
-import de.rub.hcd.entrophae.ara_wisper.server.data.PipelineContext
 import de.rub.hcd.entrophae.ara_wisper.interceptor.ToolInterceptor
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
-import de.rub.hcd.entrophae.ara_wisper.server.network.DataBaseClient
+import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import de.rub.hcd.entrophae.ara_wisper.server.data.ChatTurn
+import de.rub.hcd.entrophae.ara_wisper.server.data.PipelineContext
 import de.rub.hcd.entrophae.ara_wisper.server.data.createPipelineContext
 import de.rub.hcd.entrophae.ara_wisper.server.data.logTurnState
+import de.rub.hcd.entrophae.ara_wisper.server.network.DataBaseClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.LlmClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.SttClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.WebSocketPayloads
@@ -20,9 +19,9 @@ import de.rub.hcd.entrophae.ara_wisper.server.service.AudioProcessor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 class ProxyPipelineManager(
     private val serverScope: CoroutineScope,
@@ -31,7 +30,6 @@ class ProxyPipelineManager(
     val toolInterceptor = ToolInterceptor()
     val audioProcessor = AudioProcessor()
 
-    private val audioSendJobs = java.util.concurrent.CopyOnWriteArrayList<kotlinx.coroutines.Job>()
     @OptIn(ExperimentalCoroutinesApi::class)
     private val audioSendDispatcher = Dispatchers.IO.limitedParallelism(1)
 
@@ -42,7 +40,6 @@ class ProxyPipelineManager(
     @Volatile
     var isResponseCancelled = false
 
-    var queryWaitingForTool = "" // Traps the context during tool execution
     @Volatile
     var isWaitingForAppToolResult = false
     @Volatile
@@ -139,7 +136,7 @@ class ProxyPipelineManager(
         val textToProcess = latestUserText
         if (textToProcess.isNotEmpty()) {
             val itemId = this.currentTurn?.turnId ?: ""
-            this.currentTurn = ChatTurn.resolve(currentTurn, currentUserId, itemId, textToProcess )
+            this.currentTurn = ChatTurn.resolve(currentTurn, currentUserId, itemId, textToProcess)
 
             latestUserText = ""
             audioProcessor.reset()
@@ -177,12 +174,18 @@ class ProxyPipelineManager(
 
         Log.i(ProxySettingsRepository.TAG, "Tool-Ergebnis abgefangen: $toolAnswer \n\n")
 
-        currentTurn?.addToolAnswer(toolCallId, toolAnswer)
+        val turn = currentTurn
+        turn?.addToolAnswer(toolCallId, toolAnswer)
 
-        val activeQuery = currentTurn?.userQuery ?: ""
-        latestUserText = toolInterceptor.formatToolOutputPrompt(activeQuery, queryWaitingForTool, currentTurn?.userImageUrl, toolAnswer)
+        val activeQuery = turn?.userQuery ?: ""
+        latestUserText = toolInterceptor.formatToolOutputPrompt(
+            activeQuery,
+            turn?.queryWaitingForTool.orEmpty(),
+            turn?.userImageUrl,
+            toolAnswer
+        )
 
-        queryWaitingForTool = ""
+        turn?.queryWaitingForTool = ""
         isWaitingForAppToolResult = false
         isHoldingToolResult = true // Protect this context until the LLM reads it
     }
@@ -256,7 +259,7 @@ class ProxyPipelineManager(
 
         try {
             val currentResponseId = "proxy_resp_" + java.util.UUID.randomUUID().toString().substring(0, 8)
-            val pipelineContext = createPipelineContext(currentResponseId, sendToApp)
+            val pipelineContext = createPipelineContext(currentResponseId, sendToApp, audioSendDispatcher)
 
             // Prepare Text
             val textToProcess = preparePipelineInput(audioData, initialText, itemId, pipelineContext)
@@ -377,7 +380,7 @@ class ProxyPipelineManager(
             return Pair(updatedContext, true) // true = keep looping to let LLM read the local result
         } else {
             isWaitingForAppToolResult = true
-            queryWaitingForTool = currentTurn?.userQuery ?: "" // Cache query in case user speaks while waiting
+            currentTurn?.queryWaitingForTool = currentTurn?.userQuery ?: "" // Cache query in case user speaks while waiting
             return Pair(currentContext, false) // false = break loop, wait for external app packet
         }
     }
@@ -401,13 +404,9 @@ class ProxyPipelineManager(
         if (llmText.isNotBlank()) {
             pipelineContext.sendTranscriptDelta(llmText)
             AraWisperManager.speechManager.processTextChunk(llmText) { pcmBytes ->
-
                 this.currentTurn?.audioBuffer?.write(pcmBytes)
                 val base64Audio = Base64.encodeToString(pcmBytes, Base64.NO_WRAP)
-                val job = serverScope.launch(audioSendDispatcher) {
-                    pipelineContext.sendAudioDelta(base64Audio)
-                }
-                audioSendJobs.add(job)
+                pipelineContext.enqueueAudioDelta(serverScope, base64Audio)
             }
             if (!isThinkingText) {
                 this.currentTurn?.appendLlmText(llmText)
@@ -420,16 +419,11 @@ class ProxyPipelineManager(
         AraWisperManager.speechManager.flush() { pcmBytes ->
             currentTurn?.audioBuffer?.write(pcmBytes)
             val base64Audio = Base64.encodeToString(pcmBytes, Base64.NO_WRAP)
-            val job = serverScope.launch(audioSendDispatcher) {
-                pipelineContext.sendAudioDelta(base64Audio)
-            }
-            audioSendJobs.add(job)
+            pipelineContext.enqueueAudioDelta(serverScope, base64Audio)
         }
 
         // Ensure every response.audio.delta reaches ChatRealtimeHandler BEFORE response.done
-        val pendingJobs = audioSendJobs.toList()
-        audioSendJobs.clear()
-        pendingJobs.joinAll()
+        pipelineContext.awaitAudioFlushed()
 
         // Dispatch turn completion signals to client
         pipelineContext.sendAudioDone()
@@ -440,8 +434,6 @@ class ProxyPipelineManager(
             persistTurnData()
             logTurnState("Finished", currentTurn)
         }
-
-
     }
 
     private suspend fun persistTurnData() {
@@ -516,6 +508,7 @@ class ProxyPipelineManager(
         if (finalBase64Speech != null) {
             val sharedItemId = "item_${System.currentTimeMillis()}"
 
+            currentTurn?.resetToolState()
             isHoldingToolResult = false
             isResponseCancelled = false
 
@@ -532,6 +525,7 @@ class ProxyPipelineManager(
         this.isResponseCancelled = cancelled
         if (cancelled) {
             Log.i(ProxySettingsRepository.TAG, "Interruption received! Cancelling proxy response.")
+            currentTurn?.resetToolState()
             isWaitingForAppToolResult = false
             markTurnListening(stopSpeech = true, clearCooldown = true)
         }
@@ -550,5 +544,3 @@ class ProxyPipelineManager(
         }
     }
 }
-
-

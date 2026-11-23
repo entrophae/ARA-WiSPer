@@ -3,6 +3,8 @@ package de.rub.hcd.entrophae.ara_wisper.server.data
 import android.util.Log
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import java.io.ByteArrayOutputStream
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Temporarily saves turns of conversation to keep track of the current state before saving in a database.
@@ -25,6 +27,11 @@ data class ChatTurn(
     var audioBuffer: ByteArrayOutputStream = ByteArrayOutputStream(),
     var isSystemEvent: Boolean = false
 ) {
+    val completedAppTools: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    val completedToolResults: MutableList<Pair<String, String>> = CopyOnWriteArrayList()
+    @Volatile var appToolRounds: Int = 0
+    var queryWaitingForTool: String = ""
+
     fun addToolCall(toolCallId: String, toolName: String, query: String) {
         this.toolsUsed.add(ToolCallRecord(callId = toolCallId, name = toolName, query = query))
     }
@@ -35,6 +42,13 @@ data class ChatTurn(
         } ?: toolsUsed.lastOrNull()
 
         record?.answer = answer
+    }
+
+    fun resetToolState() {
+        completedAppTools.clear()
+        completedToolResults.clear()
+        appToolRounds = 0
+        queryWaitingForTool = ""
     }
 
     fun appendLlmText(llmText: String) {
