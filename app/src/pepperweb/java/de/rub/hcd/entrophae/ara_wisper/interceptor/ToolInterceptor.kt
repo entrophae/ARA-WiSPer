@@ -11,8 +11,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class ToolInterceptor {
-    private val localRegistry =
-        AraWisperToolRegistry()
+    private val localRegistry = AraWisperToolRegistry()
 
     fun injectTools(existingTools: JSONArray) {
         val enabledTools = ProxySettingsRepository.enabledTools
@@ -67,7 +66,7 @@ class ToolInterceptor {
             Pair(updatedContext, true)
         } else {
             // Tool not executed locally, send tool call packet and deactivate loop
-            if (!currentTurn?.userImageUrl.isNullOrBlank()) {
+            val outgoingArgs = if (toolName == "analyze_vision" && !currentTurn?.userImageUrl.isNullOrBlank()) {
                 val userQuestion = currentTurn.userQuery
                 val enhancedPrompt = """
                     The user asks: "$userQuestion". 
@@ -75,9 +74,12 @@ class ToolInterceptor {
                 """.trimIndent()
                 arguments.put("prompt", enhancedPrompt)
                 Log.i(ProxySettingsRepository.TAG, "Injected vision prompt: $enhancedPrompt")
+                arguments.toString()
+            } else {
+                toolArgs
             }
 
-            pipelineContext.sendToolCallPacket(toolCallId, toolName, toolArgs)
+            pipelineContext.sendToolCallPacket(toolCallId, toolName, outgoingArgs)
             Pair(currentContext, false)
         }
     }
@@ -104,9 +106,7 @@ class ToolInterceptor {
             "look_at_position" -> "x:${args.optDouble("x", 0.0)}, y:${args.optDouble("y", 0.0)}, z:${args.optDouble("z", 0.0)}"
             "approach_human" -> "Human ID: ${args.optInt("human_id", -1)}"
             "follow_human" -> "Distance: ${args.optDouble("distance", 1.0)}m"
-            else -> {
-                args.toString()
-            }
+            else -> args.toString()
         }
     }
 
