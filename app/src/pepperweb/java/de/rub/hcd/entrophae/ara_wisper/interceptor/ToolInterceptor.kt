@@ -49,33 +49,29 @@ class ToolInterceptor {
         return localRegistry.executeTool(toolName, arguments, toolContext!!)
     }
 
-    suspend fun processToolCall(toolArgs: String?, toolCallId: String, currentContext: String, currentTurn: ChatTurn?, pipelineContext: PipelineContext ): Pair<String, Boolean> {
-
-        val calledTool = currentTurn?.toolsUsed?.find { tool -> tool.callId == toolCallId }
+    suspend fun processToolCall( toolArgs: String?, toolCallId: String,  pipelineContext: PipelineContext ): Boolean {
+        val turn = pipelineContext.turn
+        val calledTool = turn.toolsUsed.find { it.callId == toolCallId }
         val toolName = calledTool?.name ?: "unknown"
 
         val arguments = JSONObject(toolArgs ?: "{}")
 
-        val localResult = attemptExecution(toolName, arguments, AraWisperManager.chatActivityAdapter?.toolContext, currentContext)
+        val localResult = attemptExecution(toolName, arguments, AraWisperManager.chatActivityAdapter?.toolContext, pipelineContext.currentPrompt)
 
         return if (localResult != null) {
-            // Tool executed locally, update context and continue loop
-            currentTurn?.addToolAnswer(toolCallId, localResult)
-            currentTurn?.completedToolResults?.add(toolName to localResult)
+            turn.addToolAnswer(toolCallId, localResult)
+            turn.completedToolResults.add(toolName to localResult)
 
-            val originalQuery = currentTurn?.userQuery?.takeIf { it.isNotBlank() } ?: currentContext
-            val updatedContext = formatLocalResultPrompt(
-                originalQuery = originalQuery,
+            pipelineContext.currentPrompt = formatLocalResultPrompt(
+                turn = turn,
+                fallbackQuery = pipelineContext.currentPrompt,
                 toolName = toolName,
-                result = localResult,
-                allToolResults = currentTurn?.completedToolResults?.toList().orEmpty(),
-                spokenTextsInTurn = currentTurn?.toolSynchronizer?.getSpokenTexts().orEmpty()
+                result = localResult
             )
-            Pair(updatedContext, true)
+            true
         } else {
-            // Tool not executed locally, send tool call packet and deactivate loop
-            val outgoingArgs = if (toolName == "analyze_vision" && !currentTurn?.userImageUrl.isNullOrBlank()) {
-                val userQuestion = currentTurn.userQuery
+            val outgoingArgs = if (toolName == "analyze_vision" && !turn.userImageUrl.isNullOrBlank()) {
+                val userQuestion = turn.userQuery
                 val enhancedPrompt = """
                     The user asks: "$userQuestion". 
                     Look very closely at the image and answer this specific question in extreme detail.
@@ -88,7 +84,7 @@ class ToolInterceptor {
             }
 
             pipelineContext.sendToolCallPacket(toolCallId, toolName, outgoingArgs)
-            Pair(currentContext, false)
+            false
         }
     }
 
@@ -136,15 +132,11 @@ class ToolInterceptor {
                 spokenTextsInTurn.joinToString("\n")
     }
 
-    private fun formatLocalResultPrompt(
-        originalQuery: String,
-        toolName: String,
-        result: String,
-        allToolResults: List<Pair<String, String>> = emptyList(),
-        spokenTextsInTurn: List<String> = emptyList()
-    ): String {
-        val toolSection = buildToolHistorySection(allToolResults, toolName, result)
-        val spokenSection = buildSpokenHistorySection(spokenTextsInTurn)
+    private fun formatLocalResultPrompt( turn: ChatTurn,  fallbackQuery: String,  toolName: String,  result: String ): String {
+        val originalQuery = turn.userQuery.takeIf { it.isNotBlank() } ?: fallbackQuery
+        val toolSection = buildToolHistorySection(turn.completedToolResults.toList(), toolName, result)
+        val spokenSection = buildSpokenHistorySection(turn.toolSynchronizer.getSpokenTexts())
+
         return """
             ## Ursprüngliche Anfrage:
             $originalQuery

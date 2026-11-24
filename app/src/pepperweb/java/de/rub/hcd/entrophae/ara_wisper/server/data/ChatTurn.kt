@@ -3,6 +3,8 @@ package de.rub.hcd.entrophae.ara_wisper.server.data
 import android.util.Log
 import de.rub.hcd.entrophae.ara_wisper.interceptor.ToolSynchronizer
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
+import de.rub.hcd.entrophae.ara_wisper.server.manager.DashboardManager
+import de.rub.hcd.entrophae.ara_wisper.server.network.DataBaseClient
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -11,10 +13,6 @@ import java.util.concurrent.CopyOnWriteArrayList
  * Temporarily saves turns of conversation to keep track of the current state before saving in a database.
  * A turn consists of the userQuery, llmResponse, toolCalled and the toolBufferResponse.
  * Identification exists via userId and turnId.
- * * Lifecycle:
- * - executePipeline() assigns the userQuery (or handleItemCreate() if manually given)
- * - handleToolCall() assigns the toolCalled
- * - processLlmText() assigns the llmResponse and toolBufferResponse when thinking is needed
  */
 data class ChatTurn(
     val userId: String,
@@ -28,11 +26,20 @@ data class ChatTurn(
     var audioBuffer: ByteArrayOutputStream = ByteArrayOutputStream(),
     var isSystemEvent: Boolean = false
 ) {
+    val pendingAppToolCallIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
     val completedAppTools: MutableSet<String> = ConcurrentHashMap.newKeySet()
     val completedToolResults: MutableList<Pair<String, String>> = CopyOnWriteArrayList()
     val toolSynchronizer: ToolSynchronizer = ToolSynchronizer()
+
     @Volatile var appToolRounds: Int = 0
+    @Volatile var isCancelled: Boolean = false
+    @Volatile var pendingPrompt: String = ""
     var queryWaitingForTool: String = ""
+
+    val hasPendingAppTools: Boolean
+        get() = pendingAppToolCallIds.isNotEmpty()
+
+    fun consumePendingPrompt(): String = pendingPrompt.also { pendingPrompt = "" }
 
     fun addToolCall(toolCallId: String, toolName: String, query: String) {
         this.toolsUsed.add(ToolCallRecord(callId = toolCallId, name = toolName, query = query))
@@ -46,44 +53,67 @@ data class ChatTurn(
         record?.answer = answer
     }
 
+    fun registerPendingAppTool(toolName: String, callId: String) {
+        completedAppTools.add(toolName)
+        pendingAppToolCallIds.add(callId)
+    }
+
+    fun completeAppTool(callId: String, answer: String): String {
+        val toolName = toolsUsed.find { it.callId == callId }?.name ?: "tool"
+        addToolAnswer(callId, answer)
+        completedToolResults.add(toolName to answer)
+        pendingAppToolCallIds.remove(callId)
+        return toolName
+    }
+
     fun resetToolState() {
+        pendingAppToolCallIds.clear()
         completedAppTools.clear()
         completedToolResults.clear()
         toolSynchronizer.reset()
         appToolRounds = 0
         queryWaitingForTool = ""
+        pendingPrompt = ""
+    }
+
+    fun cancel() {
+        isCancelled = true
+        resetToolState()
     }
 
     fun appendLlmText(llmText: String) {
-        /*
-        if (isThinkingText) {
-            val currentBuffer = this.toolBufferResponse ?: ""
-            val separator = if (currentBuffer.isNotEmpty() && !currentBuffer.endsWith("\n")) "\n\n" else ""
-            this.toolBufferResponse = currentBuffer + separator + llmText
-
-            Log.i(ProxySettingsRepository.TAG, "thought Added for Tool ${this.toolCalled}")
-        } else {
-            this.llmResponse += llmText
-        }
-         */
         this.llmResponse += llmText
         logTurnState("LLM Text Appended", this)
+    }
+
+    suspend fun persist() {
+        Log.i(
+            ProxySettingsRepository.TAG,
+            "READY FOR DB: $turnId | Q: $userQuery | A: $llmResponse | Tool: $toolCalled | ToolBuffer: $toolBufferResponse"
+        )
+        DashboardManager.sendChat(isUser = false, text = llmResponse)
+
+        if (!isSystemEvent) {
+            DataBaseClient.updateHistory(this)
+        } else {
+            Log.i(ProxySettingsRepository.TAG, "System event turn completed. Bypassing DB save to protect user knowledge.")
+        }
     }
 
     companion object {
         fun resolve(
             currentTurn: ChatTurn?,
-            userId: String,
-            turnId: String,
-            text: String,
+            turnId: String = "item_${System.currentTimeMillis()}",
+            text: String = "",
             isSystem: Boolean = false
         ): ChatTurn {
             if (currentTurn != null && currentTurn.turnId == turnId) {
+                if (text.isNotBlank()) currentTurn.userQuery = text
                 return currentTurn
             }
 
             return ChatTurn(
-                userId = userId,
+                userId = ProxySettingsRepository.activeUserId,
                 turnId = turnId,
                 userQuery = text,
                 isSystemEvent = isSystem

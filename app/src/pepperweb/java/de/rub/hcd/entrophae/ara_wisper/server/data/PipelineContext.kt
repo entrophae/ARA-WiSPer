@@ -1,22 +1,24 @@
 package de.rub.hcd.entrophae.ara_wisper.server.data
 
 import de.rub.hcd.entrophae.ara_wisper.server.network.WebSocketPayloads
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import java.util.concurrent.CopyOnWriteArrayList
 
-data class PipelineContext(
+class PipelineContext(
     val responseId: String,
+    val turn: ChatTurn,
+    var currentPrompt: String,
     val sendPacket: suspend (String) -> Unit,
-    private val audioSendDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val scope: CoroutineScope
 ) {
     private val audioSendJobs = CopyOnWriteArrayList<Job>()
 
-    fun enqueueAudioDelta(scope: CoroutineScope, base64Audio: String) {
+    fun enqueueAudioDelta(base64Audio: String) {
         val job = scope.launch(audioSendDispatcher) {
             sendAudioDelta(base64Audio)
         }
@@ -60,16 +62,25 @@ data class PipelineContext(
     suspend fun sendToolCallPacket(callId: String, name: String, args: String?) {
         sendPacket(WebSocketPayloads.toolCall(callId, name, args))
     }
+
+    companion object {
+        @OptIn(ExperimentalCoroutinesApi::class)
+        private val audioSendDispatcher = Dispatchers.IO.limitedParallelism(1)
+    }
 }
 
 fun createPipelineContext(
     responseId: String,
+    turn: ChatTurn,
+    initialPrompt: String,
     sendPacket: suspend (String) -> Unit,
-    audioSendDispatcher: CoroutineDispatcher = Dispatchers.IO
+    scope: CoroutineScope
 ): PipelineContext {
     return PipelineContext(
         responseId = responseId,
+        turn = turn,
+        currentPrompt = initialPrompt,
         sendPacket = sendPacket,
-        audioSendDispatcher = audioSendDispatcher
+        scope = scope
     )
 }

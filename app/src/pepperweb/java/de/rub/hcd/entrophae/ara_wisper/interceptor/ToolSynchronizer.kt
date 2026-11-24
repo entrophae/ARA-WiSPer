@@ -26,8 +26,6 @@ class ToolSynchronizer(
 
     fun getSpokenTexts(): List<String> = spokenTextsInTurn.toList()
 
-    fun hasSpokenInTurn(): Boolean = spokenTextsInTurn.isNotEmpty()
-
     suspend fun awaitBeforeToolExecution(
         toolName: String,
         isCancelled: () -> Boolean

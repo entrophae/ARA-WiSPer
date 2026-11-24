@@ -7,6 +7,7 @@ import ch.fhnw.pepper_realtime.manager.TurnManager
 import de.rub.hcd.entrophae.ara_wisper.interceptor.ToolInterceptor
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
+import de.rub.hcd.entrophae.ara_wisper.manager.ProxyStateBridge
 import de.rub.hcd.entrophae.ara_wisper.server.data.ChatTurn
 import de.rub.hcd.entrophae.ara_wisper.server.data.PipelineContext
 import de.rub.hcd.entrophae.ara_wisper.server.data.createPipelineContext
@@ -16,9 +17,11 @@ import de.rub.hcd.entrophae.ara_wisper.server.network.LlmClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.SttClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.WebSocketPayloads
 import de.rub.hcd.entrophae.ara_wisper.server.service.AudioProcessor
+import de.rub.hcd.entrophae.ara_wisper.server.service.SpeechStreamer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -27,34 +30,30 @@ class ProxyPipelineManager(
     private val serverScope: CoroutineScope,
     private val sendToApp: suspend (String) -> Unit
 ) {
-    val toolInterceptor = ToolInterceptor()
+    private enum class TurnPhase {
+        IDLE,
+        RUNNING,
+        WAITING_FOR_TOOL,
+        HOLDING_TOOL_RESULT
+    }
+
+    private val toolInterceptor = ToolInterceptor()
     val audioProcessor = AudioProcessor()
+    private val speechStreamer = SpeechStreamer()
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val audioSendDispatcher = Dispatchers.IO.limitedParallelism(1)
-
-    private val pendingAppToolCallIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
-    private var pendingToolTurnId: String? = null
-
-    val currentUserId: String
-        get() = ProxySettingsRepository.activeUserId
-
+    @Volatile
     var currentTurn: ChatTurn? = null
-    @Volatile
-    var isResponseCancelled = false
 
     @Volatile
-    var isWaitingForAppToolResult = false
-    @Volatile
-    var isHoldingToolResult = false // Protects tool context from late tool system messages
+    private var phase: TurnPhase = TurnPhase.IDLE
 
     @Volatile
-    var isPipelineRunning = false
-
-    var latestUserText = "" // Lifetime until used by LLM
+    private var activePipelineJob: Job? = null
 
     private val isTurnBusy: Boolean
-        get() = isPipelineRunning || pendingAppToolCallIds.isNotEmpty() || isWaitingForAppToolResult
+        get() = phase == TurnPhase.RUNNING ||
+                phase == TurnPhase.WAITING_FOR_TOOL ||
+                currentTurn?.hasPendingAppTools == true
 
     fun handleSessionUpdate(json: JSONObject, rawJson: String){
         DashboardManager.sendLog(rawJson, true)
@@ -82,17 +81,12 @@ class ProxyPipelineManager(
     }
 
     fun handleAudioAppend(json: JSONObject){
-        if (shouldDropIncomingAudio()) {
-            // Ensure no leftover chunk stays buffered in VAD
-            audioProcessor.reset()
-            return
-        }
+        if (ProxyStateBridge.shouldDropIncomingAudio(isTurnBusy, audioProcessor)) return
 
         val audioData = json.optString(ProxySettingsRepository.Proxy.Keys.AUDIO)
         if (audioData.isBlank()) return
         try {
-            val rawBytes = decode(audioData, Base64.NO_WRAP)
-            processAudio(rawBytes)
+            processAudio(audioData)
         } catch (e: IllegalArgumentException) {
             Log.e(TAG, "Failed to decode audio base64", e)
         }
@@ -130,33 +124,20 @@ class ProxyPipelineManager(
         }
     }
 
-    fun handleRespCreate(rawJson: String){
+    fun handleRespCreate(rawJson: String) {
         DashboardManager.sendLog(rawJson, isFromRobot = true)
-        this.isResponseCancelled = false
-        updateIsResponseCancelled(false)
 
-        val textToProcess = latestUserText
-        if (textToProcess.isNotEmpty()) {
-            val isToolResume = isHoldingToolResult
-            val itemId = this.currentTurn?.turnId ?: ""
+        val turn = currentTurn ?: return
+        val textToProcess = turn.consumePendingPrompt()
+        if (textToProcess.isEmpty()) return
 
-            if (!isToolResume || this.currentTurn == null) {
-                this.currentTurn = ChatTurn.resolve(currentTurn, currentUserId, itemId, textToProcess).apply {
-                    resetToolState()
-                }
-            }
-
-            latestUserText = ""
-            audioProcessor.reset()
-            this.currentTurn?.audioBuffer?.reset()
-
-            // Lock turn state synchronously before launching coroutine to avoid audio race window
-            markTurnThinking()
-
-            serverScope.launch {
-                executePipeline(audioData = "", initialText = textToProcess, itemId = itemId)
-            }
+        if (phase != TurnPhase.HOLDING_TOOL_RESULT) {
+            turn.resetToolState()
         }
+
+        audioProcessor.reset()
+        turn.audioBuffer.reset()
+        launchPipeline(turn = turn, initialPrompt = textToProcess)
     }
 
     fun handleItemTruncated(json: JSONObject) {
@@ -168,14 +149,31 @@ class ProxyPipelineManager(
         }
     }
 
+    private fun launchPipeline(turn: ChatTurn, audioData: String = "", initialPrompt: String = "") {
+        activePipelineJob?.cancel()
+        phase = TurnPhase.RUNNING
+        ProxyStateBridge.markThinking()
+
+        val responseId = "proxy_resp_" + java.util.UUID.randomUUID().toString().substring(0, 8)
+        val pipelineContext = createPipelineContext(
+            responseId = responseId,
+            turn = turn,
+            initialPrompt = initialPrompt,
+            sendPacket = sendToApp,
+            scope = serverScope
+        )
+
+        activePipelineJob = serverScope.launch {
+            executePipeline(pipelineContext, audioData)
+        }
+    }
+
     private fun processToolOutputItem(itemObj: JSONObject) {
         val toolCallId = itemObj.optString("call_id", itemObj.optString("tool_call_id", ""))
+        val turn = currentTurn
 
-        // Ignore stale tool outputs from canceled or superseded turns
-        if (isResponseCancelled || (pendingToolTurnId != null && pendingToolTurnId != currentTurn?.turnId)) {
+        if (turn == null || turn.isCancelled || !turn.pendingAppToolCallIds.contains(toolCallId)) {
             Log.w(ProxySettingsRepository.TAG, "Ignoring stale tool output for call_id=$toolCallId")
-            pendingAppToolCallIds.remove(toolCallId)
-            isWaitingForAppToolResult = pendingAppToolCallIds.isNotEmpty()
             return
         }
 
@@ -191,38 +189,27 @@ class ProxyPipelineManager(
 
         Log.i(TAG, "Tool-Ergebnis abgefangen ($toolCallId): $toolAnswer \n\n")
 
-        val turn = currentTurn
-        val completedToolName = turn?.toolsUsed?.find { it.callId == toolCallId }?.name ?: "tool"
-        turn?.addToolAnswer(toolCallId, toolAnswer)
-        turn?.completedToolResults?.add(completedToolName to toolAnswer)
-        pendingAppToolCallIds.remove(toolCallId)
+        val completedToolName = turn.completeAppTool(toolCallId, toolAnswer)
+        if (turn.hasPendingAppTools) return
 
-        // Wait until all parallel app tools in this turn have reported back
-        if (pendingAppToolCallIds.isNotEmpty()) {
-            return
-        }
-
-        latestUserText = toolInterceptor.formatToolOutputPrompt(
+        turn.pendingPrompt = toolInterceptor.formatToolOutputPrompt(
             turn = turn,
             toolAnswer = toolAnswer,
             completedToolName = completedToolName
         )
 
-        turn?.queryWaitingForTool = ""
-        isWaitingForAppToolResult = false
-        isHoldingToolResult = true // Protect this context until the LLM reads it
+        turn.queryWaitingForTool = ""
+        phase = TurnPhase.HOLDING_TOOL_RESULT
 
-        // Fallback: if the app tool is fire-and-forget and never sends response.create,
-        // persist the turn and release isHoldingToolResult after a short grace window
-        val expectedTurnId = turn?.turnId
+        // Fallback if a fire-and-forget app tool never triggers response.create
         serverScope.launch {
-            kotlinx.coroutines.delay(1500L)
-            if (isHoldingToolResult && !isPipelineRunning && currentTurn?.turnId == expectedTurnId) {
+            delay(1500L)
+            if (phase == TurnPhase.HOLDING_TOOL_RESULT && currentTurn === turn && !turn.isCancelled) {
                 Log.i(ProxySettingsRepository.TAG, "Fire-and-forget tool completed without response.create; finalizing turn.")
-                isHoldingToolResult = false
-                latestUserText = ""
-                persistTurnData()
-                markTurnListening(stopSpeech = false, clearCooldown = false)
+                phase = TurnPhase.IDLE
+                turn.pendingPrompt = ""
+                turn.persist()
+                ProxyStateBridge.markListening()
             }
         }
     }
@@ -230,7 +217,7 @@ class ProxyPipelineManager(
     private fun processImageItem(imageUrl: String) {
         Log.i(TAG, "Proxy intercepted image payload! Caching for VLM.")
 
-        this.currentTurn?.let { turn ->
+        currentTurn?.let { turn ->
             turn.userImageUrl = imageUrl
             // Instantly push this image to the dashboard live log for this item ID
             try {
@@ -241,7 +228,7 @@ class ProxyPipelineManager(
         }
 
         // Only restart dashboard stream if we are not actively waiting on a vision tool result
-        if (!isWaitingForAppToolResult) {
+        if (phase != TurnPhase.WAITING_FOR_TOOL) {
             try {
                 AraWisperManager.dashboardVideoManager.restartCameraStream()
             } catch (t: Throwable) {
@@ -251,194 +238,153 @@ class ProxyPipelineManager(
     }
 
     private fun processManualCommandItem(cleanText: String, nativeItemId: String) {
-        isHoldingToolResult = false
-        isWaitingForAppToolResult = false
-        this.currentTurn = ChatTurn.resolve(currentTurn, currentUserId, nativeItemId, cleanText).apply {
-            resetToolState()
-        }
-
-        latestUserText = cleanText
-
-        if (cleanText.isNotBlank()) {
-            DashboardManager.sendChat(
-                isUser = true,
-                text = cleanText,
-                userImageUrl = this.currentTurn?.userImageUrl
-            )
+        phase = TurnPhase.IDLE
+        ChatTurn.resolve(currentTurn, nativeItemId, cleanText).also { turn ->
+            turn.resetToolState()
+            turn.pendingPrompt = cleanText
+            currentTurn = turn
+            if (cleanText.isNotBlank()) {
+                DashboardManager.sendChat(isUser = true, text = cleanText, userImageUrl = turn.userImageUrl)
+            }
         }
     }
 
     private fun processSystemEventItem(cleanText: String, nativeItemId: String) {
-        // Asynchronous System Event (like "[MOVEMENT COMPLETED]" or "📷 Opening Camera")
         Log.i(TAG, "Proxy intercepted System Event: $cleanText")
 
-        // Drop late system noise to protect active tool context
-        if (isHoldingToolResult) {
+        if (phase == TurnPhase.HOLDING_TOOL_RESULT) {
             Log.i(TAG, "Dropped system noise to protect active tool context.")
             return
         }
+        if (phase == TurnPhase.WAITING_FOR_TOOL) return
 
-        // Drop notification sent during single-phase tool execution
-        if (isWaitingForAppToolResult) return
+        if (currentTurn == null || currentTurn?.llmResponse?.isNotEmpty() == true) {
+            ChatTurn.resolve(currentTurn, nativeItemId, cleanText, isSystem = true).also { turn ->
+                turn.resetToolState()
+                currentTurn = turn
+            }
+        } else {
+            Log.i(TAG, "Appended system event to ongoing turn. Preserving DB save state.")
+        }
 
-        latestUserText = """
+        currentTurn?.pendingPrompt = """
             [INTERNES SYSTEM-UPDATE]:
             $cleanText
             
             Beziehe diese Information in deine nächste Antwort ein.
         """.trimIndent()
 
-        // Append to current turn if LLM hasn't responded yet, otherwise create a new turn
-        if (this.currentTurn == null || this.currentTurn?.llmResponse?.isNotEmpty() == true) {
-            this.currentTurn = ChatTurn.resolve(this.currentTurn, currentUserId, nativeItemId, cleanText, isSystem = true).apply {
-                resetToolState()
-            }
-        } else {
-            Log.i(TAG, "Appended system event to ongoing turn. Preserving DB save state.")
-        }
-
         DashboardManager.sendChat(
             isUser = true,
             text = "⚙️ $cleanText",
-            userImageUrl = this.currentTurn?.userImageUrl
+            userImageUrl = currentTurn?.userImageUrl
         )
     }
 
-
-    suspend fun executePipeline(audioData: String, initialText: String, itemId: String) {
-        markTurnThinking()
+    private suspend fun executePipeline(pipelineContext: PipelineContext, audioData: String) {
         audioProcessor.reset()
 
         try {
-            val currentResponseId = "proxy_resp_" + java.util.UUID.randomUUID().toString().substring(0, 8)
-            val pipelineContext = createPipelineContext(currentResponseId, sendToApp, audioSendDispatcher)
+            if (!preparePipelineInput(pipelineContext, audioData)) return
 
-            // Prepare Text
-            val textToProcess = preparePipelineInput(audioData, initialText, itemId, pipelineContext)
-            if (textToProcess.isBlank()) return
-
-            // Notify App
             pipelineContext.sendThinkingPacket()
-            pipelineContext.sendOutputItemAdded(itemId + "_assistant")
+            pipelineContext.sendOutputItemAdded("${pipelineContext.turn.turnId}_assistant")
 
-            // Start AI Loop
-            runAgenticLoop(textToProcess, pipelineContext)
+            runAgenticLoop(pipelineContext)
         } finally {
-            isPipelineRunning = false
-            audioProcessor.reset()
-            if (!isWaitingForAppToolResult) {
-                markTurnListening(stopSpeech = false, clearCooldown = false)
-            } else {
-                // Keep turn active while waiting for external app/robot tool completion
-                AraWisperManager.speechManager.isTurnActive = true
+            if (currentTurn === pipelineContext.turn) {
+                audioProcessor.reset()
+                if (phase == TurnPhase.WAITING_FOR_TOOL) {
+                    ProxyStateBridge.keepTurnActiveForExternalTool()
+                } else {
+                    if (phase == TurnPhase.RUNNING) phase = TurnPhase.IDLE
+                    ProxyStateBridge.markListening()
+                }
             }
         }
     }
 
-    private suspend fun preparePipelineInput(audioData: String, initialText: String, itemId: String, pipelineContext: PipelineContext): String {
-        // If we already have text, just return it
-        if (audioData.isEmpty() || initialText.isNotBlank()) return initialText
-
-        // Otherwise, process audio transcription with an empty turn being initiated first
-        this.currentTurn = ChatTurn.resolve(currentTurn, currentUserId, itemId, initialText).apply {
-            resetToolState()
+    private suspend fun preparePipelineInput(pipelineContext: PipelineContext, audioData: String): Boolean {
+        if (audioData.isEmpty() || pipelineContext.currentPrompt.isNotBlank()) {
+            return pipelineContext.currentPrompt.isNotBlank()
         }
-        sendToApp(WebSocketPayloads.userItemPlaceholder(itemId))
+
+        sendToApp(WebSocketPayloads.userItemPlaceholder(pipelineContext.turn.turnId))
 
         val transcribedText = withContext(Dispatchers.IO) {
             SttClient.sendAudioChunk(audioData)
         }
-        if (transcribedText.isBlank()) return ""
+        if (transcribedText.isBlank()) return false
 
-        this.currentTurn?.userQuery = transcribedText
-        DashboardManager.sendChat(isUser = true, text = transcribedText, userImageUrl = this.currentTurn?.userImageUrl)
-        logTurnState("User Text Appended", this.currentTurn)
-
+        pipelineContext.turn.userQuery = transcribedText
+        pipelineContext.currentPrompt = transcribedText
+        DashboardManager.sendChat(isUser = true, text = transcribedText, userImageUrl = pipelineContext.turn.userImageUrl)
+        logTurnState("User Text Appended", pipelineContext.turn)
         pipelineContext.sendSttTranscriptCompleted(transcribedText)
 
-        return transcribedText
+        return true
     }
 
-
-    private suspend fun runAgenticLoop(initialContext: String, pipelineContext: PipelineContext) {
-        var currentContext = initialContext
+    private suspend fun runAgenticLoop(pipelineContext: PipelineContext) {
         var loopBreaker = 0
 
-        while (loopBreaker < MAX_APP_TOOL_ROUNDS_PER_TURN) {
-            if (this.currentTurn == null) {
-                Log.e(TAG, "Current Turn is null. Can't continue agentic loop")
-                return
-            }
+        while (loopBreaker < MAX_APP_TOOL_ROUNDS_PER_TURN && !pipelineContext.turn.isCancelled) {
             loopBreaker++
-            if (isResponseCancelled) return
 
-            val turn = this.currentTurn!!
             val llmMessageObj = withContext(Dispatchers.IO) {
-                LlmClient.fetchLlmResponse(currentContext, turn)
+                LlmClient.fetchLlmResponse(pipelineContext.currentPrompt, pipelineContext.turn)
             } ?: return
 
-            // LLM has safely consumed the context
-            isHoldingToolResult = false
-
-            val (updatedContext, continueLoop) = processLlmMessage(llmMessageObj, currentContext, pipelineContext)
-
-            currentContext = updatedContext
+            val continueLoop = processLlmMessage(llmMessageObj, pipelineContext)
             if (!continueLoop) break
         }
         finalizePipelineTurn(pipelineContext)
     }
 
-    private suspend fun processLlmMessage(llmMessageObj: JSONObject, currentContext: String, pipelineContext: PipelineContext): Pair<String, Boolean> {
+    private suspend fun processLlmMessage(llmMessageObj: JSONObject, pipelineContext: PipelineContext): Boolean {
         val rawContent = llmMessageObj.opt("content")
         val initialLlmText = if (rawContent == null || rawContent == JSONObject.NULL) "" else llmMessageObj.optString("content", "")
 
         return if (LlmClient.toolDetected(llmMessageObj)) {
-            executeToolPhase(llmMessageObj, initialLlmText, currentContext, pipelineContext)
+            executeToolPhase(llmMessageObj, initialLlmText, pipelineContext)
         } else {
-            processLlmText(initialLlmText, pipelineContext, isThinkingText = false)
-            Pair(currentContext, false) // false = deactivate pipeline loop
+            speechStreamer.speak(initialLlmText, pipelineContext, isThinkingText = false)
+            false
         }
     }
 
-    private fun isRepeatAppToolBlocked(toolName: String, turn: ChatTurn?): Boolean {
-        return (toolName in SINGLE_SHOT_TOOLS && turn?.completedAppTools?.contains(toolName) == true) ||
-                (turn?.appToolRounds ?: 0) >= MAX_APP_TOOL_ROUNDS_PER_TURN
+    private fun isRepeatAppToolBlocked(toolName: String, turn: ChatTurn): Boolean {
+        return (toolName in SINGLE_SHOT_TOOLS && turn.completedAppTools.contains(toolName)) ||
+                turn.appToolRounds >= MAX_APP_TOOL_ROUNDS_PER_TURN
     }
 
-    private suspend fun executeToolPhase(llmMessageObj: JSONObject, initialLlmText: String, currentContext: String, pipelineContext: PipelineContext): Pair<String, Boolean> {
+    private suspend fun executeToolPhase(llmMessageObj: JSONObject, initialLlmText: String, pipelineContext: PipelineContext): Boolean {
         val (toolCalls, cleanedText) = LlmClient.extractToolCalls(llmMessageObj, initialLlmText)
-        val turn = this.currentTurn
 
         if (toolCalls.isEmpty()) {
             pipelineContext.sendTranscriptDelta("Error")
-            return Pair(currentContext, false)
+            return false
         }
 
-        // Only speak thinking/filler text if at least one tool in this batch will actually run
-        val hasExecutableTool = toolCalls.any { !isRepeatAppToolBlocked(it.name, turn) }
+        val hasExecutableTool = toolCalls.any { !isRepeatAppToolBlocked(it.name, pipelineContext.turn) }
         if (hasExecutableTool && cleanedText.isNotBlank()) {
-            processLlmText(cleanedText, pipelineContext, isThinkingText = true)
-            turn?.toolSynchronizer?.recordSpokenText(cleanedText)
-            DashboardManager.sendChat(isUser = false, text = cleanedText)
-            flushSpeechAudio(pipelineContext)
+            speakThinkingText(cleanedText, pipelineContext)
         }
 
-        var rollingContext = currentContext
         var allExecutedLocally = true
         val seenSignaturesInBatch = mutableSetOf<String>()
 
         for (call in toolCalls) {
-            // Deduplicate identical calls in the same tool_calls batch
             val signature = if (call.name in SINGLE_SHOT_TOOLS) call.name else "${call.name}:${call.arguments}"
             if (!seenSignaturesInBatch.add(signature)) {
                 Log.w(TAG, "Skipping duplicate parallel tool call: $signature")
                 continue
             }
 
-            if (isRepeatAppToolBlocked(call.name, turn)) {
+            if (isRepeatAppToolBlocked(call.name, pipelineContext.turn)) {
                 Log.w(ProxySettingsRepository.TAG, "Blocking repeat app tool '${call.name}' in same turn; forcing direct answer.")
-                rollingContext = """
-                    $rollingContext
+                pipelineContext.currentPrompt = """
+                    ${pipelineContext.currentPrompt}
 
                     ## System-Info (${call.name}):
                     Das Tool '${call.name}' wurde in diesem Zug bereits ausgeführt und das Ergebnis liegt dir bereits vor. Rufe '${call.name}' NICHT erneut auf. Nutze die vorhandenen Informationen (und rufe bei Bedarf nur noch ein anderes angefordertes Tool auf, falls noch ein Teil der Anfrage offen ist).
@@ -446,182 +392,80 @@ class ProxyPipelineManager(
                 continue
             }
 
-            val (nextContext, executedLocally) = handleToolCall(
-                call.name, call.arguments, call.id, rollingContext, pipelineContext, turn
-            )
-            rollingContext = nextContext
+            val executedLocally = handleToolCall(call.name, call.arguments, call.id, pipelineContext)
 
             if (!executedLocally) {
                 allExecutedLocally = false
-                turn?.completedAppTools?.add(call.name)
-                pendingAppToolCallIds.add(call.id)
-                pendingToolTurnId = turn?.turnId
+                pipelineContext.turn.registerPendingAppTool(call.name, call.id)
             }
         }
 
         return if (allExecutedLocally) {
-            Log.i(TAG, "Local tool executed. Looping back with content: $rollingContext")
-            Pair(rollingContext, true) // true = keep looping to let LLM read the local result
+            Log.i(TAG, "Local tool executed. Looping back with content: ${pipelineContext.currentPrompt}")
+            true
         } else {
-            turn?.let {
-                it.appToolRounds++
-                it.queryWaitingForTool = it.userQuery
-            }
-            isWaitingForAppToolResult = true
-            Pair(rollingContext, false) // false = break loop, wait for external app packet
+            pipelineContext.turn.appToolRounds++
+            pipelineContext.turn.queryWaitingForTool = pipelineContext.turn.userQuery
+            phase = TurnPhase.WAITING_FOR_TOOL
+            false
         }
-
     }
 
-    suspend fun handleToolCall(toolName: String, toolArgs: String?, toolCallId: String, currentContext: String, pipelineContext: PipelineContext, currentTurn: ChatTurn?): Pair<String, Boolean> {
-        // create the new toolrecord which we can use in the
-        currentTurn?.toolCalled = toolName+"_"+toolCallId
-        logTurnState("Tool Called: $toolName", currentTurn)
+    private suspend fun speakThinkingText(text: String, pipelineContext: PipelineContext) {
+        speechStreamer.speak(text, pipelineContext, isThinkingText = true)
+        pipelineContext.turn.toolSynchronizer.recordSpokenText(text)
+        DashboardManager.sendChat(isUser = false, text = text)
+        speechStreamer.flush(pipelineContext)
+    }
+
+    suspend fun handleToolCall(toolName: String, toolArgs: String?, toolCallId: String, pipelineContext: PipelineContext): Boolean {
+        pipelineContext.turn.toolCalled = "${toolName}_$toolCallId"
+        logTurnState("Tool Called: $toolName", pipelineContext.turn)
+
         val arguments = JSONObject(toolArgs ?: "{}")
         val query = toolInterceptor.extractQueryOrInput(toolName, arguments)
+        pipelineContext.turn.addToolCall(toolCallId, toolName, query)
 
-        currentTurn?.addToolCall(toolCallId, toolName, query)
-
-        currentTurn?.toolSynchronizer?.awaitBeforeToolExecution(toolName) { isResponseCancelled }
+        pipelineContext.turn.toolSynchronizer.awaitBeforeToolExecution(toolName) { pipelineContext.turn.isCancelled }
 
         // Run tool execution on Dispatchers.IO so blocking RAG/HTTP calls never stall audio streaming
         return withContext(Dispatchers.IO) {
-            toolInterceptor.processToolCall(toolArgs, toolCallId, currentContext, currentTurn, pipelineContext)
-        }
-    }
-
-    private suspend fun flushSpeechAudio(pipelineContext: PipelineContext) {
-        AraWisperManager.speechManager.flush { pcmBytes ->
-            currentTurn?.audioBuffer?.write(pcmBytes)
-            val base64Audio = Base64.encodeToString(pcmBytes, Base64.NO_WRAP)
-            pipelineContext.enqueueAudioDelta(serverScope, base64Audio)
-        }
-        pipelineContext.awaitAudioFlushed()
-    }
-
-    private suspend fun processLlmText(llmText: String, pipelineContext: PipelineContext, isThinkingText: Boolean = false) {
-        if (llmText.isNotBlank()) {
-            pipelineContext.sendTranscriptDelta(llmText)
-            AraWisperManager.speechManager.processTextChunk(llmText) { pcmBytes ->
-                this.currentTurn?.audioBuffer?.write(pcmBytes)
-                val base64Audio = Base64.encodeToString(pcmBytes, Base64.NO_WRAP)
-                pipelineContext.enqueueAudioDelta(serverScope, base64Audio)
-            }
-            if (!isThinkingText) {
-                this.currentTurn?.appendLlmText(llmText)
-            }
+            toolInterceptor.processToolCall(toolArgs, toolCallId, pipelineContext)
         }
     }
 
     private suspend fun finalizePipelineTurn(pipelineContext: PipelineContext) {
-        // Flush speech engine and wait until all TTS/Qi audio processing is complete
-        flushSpeechAudio(pipelineContext)
-
-        // Dispatch turn completion signals to client
+        speechStreamer.flush(pipelineContext)
         pipelineContext.sendAudioDone()
 
-        // Persist history and dashboard data if not awaiting an app tool callback
-        if (!isWaitingForAppToolResult) {
+        if (phase != TurnPhase.WAITING_FOR_TOOL && !pipelineContext.turn.isCancelled) {
             pipelineContext.sendDone()
-            persistTurnData()
-            logTurnState("Finished", currentTurn)
+            pipelineContext.turn.persist()
+            logTurnState("Finished", pipelineContext.turn)
         }
     }
 
-    private suspend fun persistTurnData() {
-        val turn = currentTurn ?: return
+    fun processAudio(audioData: String) {
+        val audioBytes = decode(audioData, Base64.NO_WRAP)
+        val finalBase64Speech = audioProcessor.processChunk(audioBytes) ?: return
 
-        Log.i(
-            TAG,
-            "READY FOR DB: ${turn.turnId} | Q: ${turn.userQuery} | A: ${turn.llmResponse} | Tool: ${turn.toolCalled} | ToolBuffer: ${turn.toolBufferResponse}"
-        )
-
-        DashboardManager.sendChat(isUser = false, text = turn.llmResponse)
-
-        if (!turn.isSystemEvent) {
-            DataBaseClient.updateHistory(turn)
-        } else {
-            Log.i( TAG, "System event turn completed. Bypassing DB save to protect user knowledge." )
-        }
-    }
-
-    // Incoming Audio should be dropped when muted, speaking or thinking (if self-muting didn't work somehow)
-    private fun shouldDropIncomingAudio(): Boolean {
-        val adapter = AraWisperManager.chatActivityAdapter
-        val turnManager = adapter?.turnManager
-        val turnState = turnManager?.state
-        val isRobotBusyState = turnState == TurnManager.State.THINKING || turnState == TurnManager.State.SPEAKING
-
-        // Enforce THINKING lock if main's ChatRealtimeHandler drifted to LISTENING while a turn/tool is active
-        if (isTurnBusy && turnState == TurnManager.State.LISTENING && !adapter.viewModel.isAudioPlaying.value
-        ) {
-            turnManager.setState(TurnManager.State.THINKING)
-        }
-        return adapter?.audioInputController?.isMuted == true ||
-                AraWisperManager.speechManager.isSpeakingOrCoolingDown() ||
-                isTurnBusy ||
-                isRobotBusyState
-    }
-
-    private fun markTurnThinking() {
-        isPipelineRunning = true
-        AraWisperManager.speechManager.isTurnActive = true
-        AraWisperManager.chatActivityAdapter?.let { adapter ->
-            adapter.viewModel.setResponseGenerating(true)
-            if (adapter.turnManager?.state != TurnManager.State.SPEAKING) {
-                adapter.turnManager?.setState(TurnManager.State.THINKING)
-            }
-        }
-    }
-
-    private fun markTurnListening(stopSpeech: Boolean, clearCooldown: Boolean) {
-        isPipelineRunning = false
-        AraWisperManager.speechManager.isTurnActive = false
-        audioProcessor.reset()
-
-        if (stopSpeech) {
-            AraWisperManager.speechManager.stop(clearCooldown = clearCooldown)
+        ChatTurn.resolve(currentTurn).also { turn ->
+            currentTurn = turn
+            launchPipeline(turn = turn, audioData = finalBase64Speech)
         }
 
-        AraWisperManager.chatActivityAdapter?.let { adapter ->
-            adapter.viewModel.setResponseGenerating(false)
-            if (!AraWisperManager.speechManager.isSpeakingOrCoolingDown()) {
-                adapter.viewModel.setAudioPlaying(false)
-                adapter.turnManager?.setState(TurnManager.State.LISTENING)
-            }
-        }
-    }
-
-    fun processAudio(audioBytes: ByteArray) {
-        val finalBase64Speech = audioProcessor.processChunk(audioBytes)
-        if (finalBase64Speech != null) {
-            val sharedItemId = "item_${System.currentTimeMillis()}"
-
-            currentTurn?.resetToolState()
-            isHoldingToolResult = false
-            isResponseCancelled = false
-
-            // Lock turn state synchronously before launching coroutine
-            markTurnThinking()
-
-            serverScope.launch {
-                executePipeline(audioData = finalBase64Speech, initialText = "", sharedItemId)
-            }
-        }
     }
 
     fun updateIsResponseCancelled(cancelled: Boolean) {
-        this.isResponseCancelled = cancelled
-        if (cancelled) {
-            Log.i(TAG, "Interruption received! Cancelling proxy response.")
-            currentTurn?.resetToolState()
-            pendingAppToolCallIds.clear()
-            pendingToolTurnId = null
-            isWaitingForAppToolResult = false
-            isHoldingToolResult = false
-            latestUserText = ""
-            markTurnListening(stopSpeech = true, clearCooldown = true)
-        }
+        if (!cancelled) return
+
+        Log.i(TAG, "Interruption received! Cancelling proxy response.")
+        currentTurn?.cancel()
+        activePipelineJob?.cancel()
+        activePipelineJob = null
+        phase = TurnPhase.IDLE
+        audioProcessor.reset()
+        ProxyStateBridge.markListening(stopSpeech = true, clearCooldown = true)
     }
 
     private suspend fun applyTruncatedTextToCurrentTurn(rawTruncatedText: String) {
