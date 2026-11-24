@@ -406,133 +406,71 @@ class ProxyPipelineManager(
     }
 
     private suspend fun executeToolPhase(llmMessageObj: JSONObject, initialLlmText: String, currentContext: String, pipelineContext: PipelineContext): Pair<String, Boolean> {
-        val toolCallsArray = llmMessageObj.optJSONArray("tool_calls")
-        val (_, _, cleanedText) = LlmClient.extractToolInformation(llmMessageObj, initialLlmText)
+        val (toolCalls, cleanedText) = LlmClient.extractToolCalls(llmMessageObj, initialLlmText)
         val turn = this.currentTurn
 
-        // Handle multi-tool responses
-        if (toolCallsArray != null && toolCallsArray.length() > 0) {
-            // Only speak thinking/filler text if at least one tool in this batch will actually run
-            var hasExecutableTool = false
-            for (i in 0 until toolCallsArray.length()) {
-                val callObj = toolCallsArray.optJSONObject(i) ?: continue
-                val fnObj = callObj.optJSONObject("function")
-                val name = fnObj?.optString("name")?.takeIf { it.isNotBlank() }
-                    ?: callObj.optString("name", "")
-                if (name.isNotBlank() && !isRepeatAppToolBlocked(name, turn)) {
-                    hasExecutableTool = true
-                    break
-                }
-            }
-
-            if (hasExecutableTool && cleanedText.isNotBlank()) {
-                processLlmText(cleanedText, pipelineContext, isThinkingText = true)
-                turn?.toolSynchronizer?.recordSpokenText(cleanedText)
-                DashboardManager.sendChat(isUser = false, text = cleanedText)
-                flushSpeechAudio(pipelineContext)
-            }
-
-            var rollingContext = currentContext
-            var allExecutedLocally = true
-            val seenSignaturesInBatch = mutableSetOf<String>()
-
-            for (i in 0 until toolCallsArray.length()) {
-                val callObj = toolCallsArray.optJSONObject(i) ?: continue
-                val fnObj = callObj.optJSONObject("function")
-                val name = fnObj?.optString("name")?.takeIf { it.isNotBlank() }
-                    ?: callObj.optString("name", "")
-                val args = fnObj?.optString("arguments") ?: callObj.optString("arguments", "{}")
-                val callId = callObj.optString("id").takeIf { it.isNotBlank() }
-                    ?: "call_${System.currentTimeMillis()}_$i"
-
-                if (name.isBlank()) continue
-
-                // Deduplicate identical calls in the same tool_calls batch
-                val signature = if (name in SINGLE_SHOT_TOOLS) name else "$name:$args"
-                if (!seenSignaturesInBatch.add(signature)) {
-                    Log.w(TAG, "Skipping duplicate parallel tool call: $signature")
-                    continue
-                }
-
-                if (isRepeatAppToolBlocked(name, turn)) {
-                    Log.w(ProxySettingsRepository.TAG, "Blocking repeat app tool '$name' in same turn; forcing direct answer.")
-                    rollingContext = """
-                        $rollingContext
-
-                        ## System-Info ($name):
-                        Das Tool '$name' wurde in diesem Zug bereits ausgeführt und das Ergebnis liegt dir bereits vor. Rufe '$name' NICHT erneut auf. Nutze die vorhandenen Informationen (und rufe bei Bedarf nur noch ein anderes angefordertes Tool auf, falls noch ein Teil der Anfrage offen ist).
-                    """.trimIndent()
-                    continue
-                }
-
-                val (nextContext, executedLocally) = handleToolCall(
-                    name, args, callId, rollingContext, pipelineContext, turn
-                )
-                rollingContext = nextContext
-
-                if (!executedLocally) {
-                    allExecutedLocally = false
-                    turn?.completedAppTools?.add(name)
-                    pendingAppToolCallIds.add(callId)
-                    pendingToolTurnId = turn?.turnId
-                }
-            }
-
-            return if (allExecutedLocally) {
-                Log.i(TAG, "Local tool executed. Looping back with content: $rollingContext")
-                Pair(rollingContext, true) // true = keep looping to let LLM read the local result
-            } else {
-                turn?.let {
-                    it.appToolRounds++
-                    it.queryWaitingForTool = it.userQuery
-                }
-                isWaitingForAppToolResult = true
-                Pair(rollingContext, false) // false = break loop, wait for external app packet
-            }
-        }
-
-        // single non-array tool
-        val (toolName, toolArgs, _) = LlmClient.extractToolInformation(llmMessageObj, initialLlmText)
-        if (toolName == null) {
+        if (toolCalls.isEmpty()) {
             pipelineContext.sendTranscriptDelta("Error")
             return Pair(currentContext, false)
         }
 
-        if (isRepeatAppToolBlocked(toolName, turn)) {
-            val forcedContext = """
-                $currentContext
-    
-                ## System-Info ($toolName):
-                Das Tool '$toolName' wurde in diesem Zug bereits ausgeführt. Rufe '$toolName' NICHT erneut auf.
-            """.trimIndent()
-            return Pair(forcedContext, true)
-        }
-
-        if (cleanedText.isNotBlank()) {
+        // Only speak thinking/filler text if at least one tool in this batch will actually run
+        val hasExecutableTool = toolCalls.any { !isRepeatAppToolBlocked(it.name, turn) }
+        if (hasExecutableTool && cleanedText.isNotBlank()) {
             processLlmText(cleanedText, pipelineContext, isThinkingText = true)
             turn?.toolSynchronizer?.recordSpokenText(cleanedText)
             DashboardManager.sendChat(isUser = false, text = cleanedText)
             flushSpeechAudio(pipelineContext)
         }
 
-        val toolCallId = "call_${System.currentTimeMillis()}"
-        val (updatedContext, executedLocally) = handleToolCall(
-            toolName, toolArgs, toolCallId, currentContext, pipelineContext, turn
-        )
+        var rollingContext = currentContext
+        var allExecutedLocally = true
+        val seenSignaturesInBatch = mutableSetOf<String>()
 
-        return if (executedLocally) {
-            Pair(updatedContext, true)
+        for (call in toolCalls) {
+            // Deduplicate identical calls in the same tool_calls batch
+            val signature = if (call.name in SINGLE_SHOT_TOOLS) call.name else "${call.name}:${call.arguments}"
+            if (!seenSignaturesInBatch.add(signature)) {
+                Log.w(TAG, "Skipping duplicate parallel tool call: $signature")
+                continue
+            }
+
+            if (isRepeatAppToolBlocked(call.name, turn)) {
+                Log.w(ProxySettingsRepository.TAG, "Blocking repeat app tool '${call.name}' in same turn; forcing direct answer.")
+                rollingContext = """
+                    $rollingContext
+
+                    ## System-Info (${call.name}):
+                    Das Tool '${call.name}' wurde in diesem Zug bereits ausgeführt und das Ergebnis liegt dir bereits vor. Rufe '${call.name}' NICHT erneut auf. Nutze die vorhandenen Informationen (und rufe bei Bedarf nur noch ein anderes angefordertes Tool auf, falls noch ein Teil der Anfrage offen ist).
+                """.trimIndent()
+                continue
+            }
+
+            val (nextContext, executedLocally) = handleToolCall(
+                call.name, call.arguments, call.id, rollingContext, pipelineContext, turn
+            )
+            rollingContext = nextContext
+
+            if (!executedLocally) {
+                allExecutedLocally = false
+                turn?.completedAppTools?.add(call.name)
+                pendingAppToolCallIds.add(call.id)
+                pendingToolTurnId = turn?.turnId
+            }
+        }
+
+        return if (allExecutedLocally) {
+            Log.i(TAG, "Local tool executed. Looping back with content: $rollingContext")
+            Pair(rollingContext, true) // true = keep looping to let LLM read the local result
         } else {
             turn?.let {
-                it.completedAppTools.add(toolName)
                 it.appToolRounds++
                 it.queryWaitingForTool = it.userQuery
             }
-            pendingAppToolCallIds.add(toolCallId)
-            pendingToolTurnId = turn?.turnId
             isWaitingForAppToolResult = true
-            Pair(currentContext, false)
+            Pair(rollingContext, false) // false = break loop, wait for external app packet
         }
+
     }
 
     suspend fun handleToolCall(toolName: String, toolArgs: String?, toolCallId: String, currentContext: String, pipelineContext: PipelineContext, currentTurn: ChatTurn?): Pair<String, Boolean> {

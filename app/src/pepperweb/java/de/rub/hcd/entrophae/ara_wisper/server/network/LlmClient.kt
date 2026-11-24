@@ -25,7 +25,7 @@ import java.io.ByteArrayOutputStream
 object LlmClient {
     private val client = HttpClientManager.getInstance().getApiClient()
 
-    data class ModelFallback(val cleanText: String, val toolName: String, val arguments: String)
+    data class ParsedToolCall( val id: String, val name: String, val arguments: String )
 
     suspend fun fetchLlmResponse(textToProcess: String, currentTurn: ChatTurn): JSONObject? {
 
@@ -151,7 +151,7 @@ object LlmClient {
                 || llmMessageObj.optString("content", "").contains("[TOOL_CALLS]")
     }
 
-    fun parseModelFallback(llmResponseText: String): ModelFallback? {
+    fun parseModelFallback(llmResponseText: String): Pair<String, ParsedToolCall>? {
         if (!llmResponseText.contains("[TOOL_CALLS]")) return null
         val splitText = llmResponseText.split("\\[TOOL_CALLS]".toRegex())
         val cleanText = splitText[0].trim()
@@ -175,29 +175,41 @@ object LlmClient {
         if (lastBraceIndex != -1) {
             val name = toolString.substring(0, firstBrace).trim()
             val args = toolString.substring(firstBrace, lastBraceIndex + 1).trim()
-            return ModelFallback(cleanText, name, args)
+            return cleanText to ParsedToolCall(
+                id = "call_${System.currentTimeMillis()}",
+                name = name,
+                arguments = args
+            )
         }
         return null
     }
 
-    fun extractToolInformation( llmMessageObj: JSONObject, llmText: String): Triple<String?, String?, String> {
-        var toolName: String? = null
-        var toolArgs: String? = null
-        var cleanedText = llmText
+    fun extractToolCalls(llmMessageObj: JSONObject, llmText: String): Pair<List<ParsedToolCall>, String> {
+        val toolCallsArray = llmMessageObj.optJSONArray("tool_calls")
+        if (toolCallsArray != null && toolCallsArray.length() > 0) {
+            val parsed = (0 until toolCallsArray.length()).mapNotNull { i ->
+                val callObj = toolCallsArray.optJSONObject(i) ?: return@mapNotNull null
+                val fnObj = callObj.optJSONObject("function")
+                val name = fnObj?.optString("name")?.takeIf { it.isNotBlank() }
+                    ?: callObj.optString("name", "")
+                if (name.isBlank()) return@mapNotNull null
 
-        val toolCalls = llmMessageObj.optJSONArray("tool_calls")
-        if (toolCalls != null && toolCalls.length() > 0) {
-            toolName = toolCalls.optJSONObject(0)?.optJSONObject("function")?.optString("name")
-            toolArgs = toolCalls.optJSONObject(0)?.optJSONObject("function")?.optString("arguments")
-        } else if (!ProxySettingsRepository.customLlmHasTools) {
-            parseModelFallback(llmText)?.let {
-                cleanedText = it.cleanText
-                toolName = it.toolName
-                toolArgs = it.arguments
+                val args = fnObj?.optString("arguments") ?: callObj.optString("arguments", "{}")
+                val callId = callObj.optString("id").takeIf { it.isNotBlank() }
+                    ?: "call_${System.currentTimeMillis()}_$i"
+
+                ParsedToolCall(id = callId, name = name, arguments = args)
+            }
+            return parsed to llmText
+        }
+
+        if (!ProxySettingsRepository.customLlmHasTools) {
+            parseModelFallback(llmText)?.let { (cleanText, fallbackCall) ->
+                return listOf(fallbackCall) to cleanText
             }
         }
 
-        return Triple(toolName, toolArgs, cleanedText)
+        return emptyList<ParsedToolCall>() to llmText
     }
 
     suspend fun getAvailableModels(endpoint: String, apiKey: String): String = withContext(Dispatchers.IO) {
