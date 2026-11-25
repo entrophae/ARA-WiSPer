@@ -312,33 +312,18 @@ private fun processSpeakCommand(json: JSONObject, viewModel: ChatViewModel) {
     val robotMsg = ChatMessage(text, ChatMessage.Sender.ROBOT)
     viewModel.addMessage(robotMsg)
 
-    if (llmMode && apiMode == ProxySettingsRepository.Modes.ROUTING.CUSTOM) {
-        AraWisperManager.speechManager.processTextChunk(text)
-
-        val turn = ChatTurn(
-            userId = ProxySettingsRepository.activeUserId,
-            turnId = "manual_speak_${System.currentTimeMillis()}",
-            userQuery = "",
-            llmResponse = text
-        )
-        CoroutineScope(Dispatchers.IO).launch {
-            DataBaseClient.updateHistory(turn)
-            DashboardManager.syncHistoryToBrowser(turn.userId)
-        }
-    }
-    else if (llmMode) {
+    if (llmMode && apiMode != ProxySettingsRepository.Modes.ROUTING.CUSTOM) {
         viewModel.sendMessageToRealtimeAPI(text, requestResponse = false, allowInterrupt = true)
-    }
-    else {
-        AraWisperManager.speechManager.processTextChunk(text)
-
-        val turn = ChatTurn(
-            userId = ProxySettingsRepository.activeUserId,
-            turnId = "manual_speak_${System.currentTimeMillis()}",
-            userQuery = "",
-            llmResponse = text
-        )
+    } else {
         CoroutineScope(Dispatchers.IO).launch {
+            AraWisperManager.speechManager.speakImmediate(text)
+
+            val turn = ChatTurn(
+                userId = ProxySettingsRepository.activeUserId,
+                turnId = "manual_speak_${System.currentTimeMillis()}",
+                userQuery = "",
+                llmResponse = text
+            )
             DataBaseClient.updateHistory(turn)
             DashboardManager.syncHistoryToBrowser(turn.userId)
         }

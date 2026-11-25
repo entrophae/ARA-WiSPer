@@ -151,6 +151,7 @@ class ProxyPipelineManager(
 
     private fun launchPipeline(turn: ChatTurn, audioData: String = "", initialPrompt: String = "") {
         activePipelineJob?.cancel()
+        speechStreamer.reset()
         phase = TurnPhase.RUNNING
         ProxyStateBridge.markThinking()
 
@@ -465,6 +466,7 @@ class ProxyPipelineManager(
         activePipelineJob = null
         phase = TurnPhase.IDLE
         audioProcessor.reset()
+        speechStreamer.reset()
         ProxyStateBridge.markListening(stopSpeech = true, clearCooldown = true)
     }
 

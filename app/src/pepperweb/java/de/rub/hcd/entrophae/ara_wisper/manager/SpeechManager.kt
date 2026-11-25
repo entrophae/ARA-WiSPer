@@ -46,6 +46,13 @@ class SpeechManager {
         }
     }
 
+    suspend fun speakImmediate(text: String, onPcmReady: ((ByteArray) -> Unit)? = null) {
+        if (text.isBlank()) return
+        val text = "$text." // Make sure it ends with punctuation
+        processTextChunk(text, onPcmReady)
+        flush(onPcmReady)
+    }
+
     fun isSpeakingOrCoolingDown(cooldownMs: Long = DEFAULT_COOLDOWN_MS): Boolean {
         ensurePlaybackObserver()
         val now = SystemClock.elapsedRealtime()
@@ -88,6 +95,12 @@ class SpeechManager {
         }
     }
 
+    fun clearBuffer() {
+        synchronized(bufferLock) {
+            sentenceBuffer.clear()
+        }
+    }
+
     suspend fun flush(onPcmReady: ((ByteArray) -> Unit)? = null) {
         if (onPcmReady != null) {
             delegatesPlaybackToClient = true
@@ -105,11 +118,21 @@ class SpeechManager {
             speechController.speak(leftover, onPcmReady)
         }
 
-        suspendCancellableCoroutine { continuation ->
-            speechController.flush {
-                if (continuation.isActive) {
-                    continuation.resume(Unit)
+        val completed = kotlinx.coroutines.withTimeoutOrNull(DEFAULT_COOLDOWN_MS) {
+            suspendCancellableCoroutine { continuation ->
+                speechController.flush {
+                    if (continuation.isActive) {
+                        continuation.resume(Unit)
+                    }
                 }
+            }
+        }
+
+        if (completed == null) {
+            Log.w(TAG, "speechController.flush timed out after ${DEFAULT_COOLDOWN_MS}ms; resetting speaking state.")
+            isDriverSpeaking = false
+            if (!delegatesPlaybackToClient) {
+                syncDirectSpeechUiState(speaking = false)
             }
         }
     }

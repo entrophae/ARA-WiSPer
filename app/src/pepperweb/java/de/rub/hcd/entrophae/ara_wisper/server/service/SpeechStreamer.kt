@@ -25,6 +25,10 @@ class SpeechStreamer {
         }
     }
 
+    fun reset() {
+        AraWisperManager.speechManager.clearBuffer()
+    }
+
     suspend fun flush(pipelineContext: PipelineContext) {
         AraWisperManager.speechManager.flush { pcmBytes ->
             enqueuePcmBytes(pcmBytes, pipelineContext)
