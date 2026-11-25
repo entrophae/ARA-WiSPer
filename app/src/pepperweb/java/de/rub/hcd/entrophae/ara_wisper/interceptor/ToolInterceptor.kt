@@ -45,8 +45,12 @@ class ToolInterceptor {
             Log.i(ProxySettingsRepository.TAG, "Delegating standard tool to core system: $toolName with content:\n$currentContext\nand arguments:\n${arguments.toString(2)}")
             return null
         }
+        if (toolContext == null) {
+            Log.w(ProxySettingsRepository.TAG, "Local tool $toolName skipped: toolContext is null")
+            return "Error: Tool context is currently unavailable."
+        }
         Log.i(ProxySettingsRepository.TAG, "Local tool $toolName executing with content: $currentContext")
-        return localRegistry.executeTool(toolName, arguments, toolContext!!)
+        return localRegistry.executeTool(toolName, arguments, toolContext)
     }
 
     suspend fun processToolCall( toolArgs: String?, toolCallId: String,  pipelineContext: PipelineContext ): Boolean {

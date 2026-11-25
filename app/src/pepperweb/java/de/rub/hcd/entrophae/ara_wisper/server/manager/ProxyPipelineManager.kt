@@ -53,6 +53,7 @@ class ProxyPipelineManager(
     private val isTurnBusy: Boolean
         get() = phase == TurnPhase.RUNNING ||
                 phase == TurnPhase.WAITING_FOR_TOOL ||
+                phase == TurnPhase.HOLDING_TOOL_RESULT ||
                 currentTurn?.hasPendingAppTools == true
 
     fun handleSessionUpdate(json: JSONObject, rawJson: String){
@@ -374,6 +375,7 @@ class ProxyPipelineManager(
 
         var allExecutedLocally = true
         val seenSignaturesInBatch = mutableSetOf<String>()
+        val validCalls = mutableListOf<LlmClient.ParsedToolCall>()
 
         for (call in toolCalls) {
             val signature = if (call.name in SINGLE_SHOT_TOOLS) call.name else "${call.name}:${call.arguments}"
@@ -393,11 +395,16 @@ class ProxyPipelineManager(
                 continue
             }
 
-            val executedLocally = handleToolCall(call.name, call.arguments, call.id, pipelineContext)
+            validCalls.add(call)
+            if (ProxySettingsRepository.isStandardTool(call.name)) {
+                pipelineContext.turn.registerPendingAppTool(call.name, call.id)
+            }
+        }
 
+        for (call in validCalls) {
+            val executedLocally = handleToolCall(call.name, call.arguments, call.id, pipelineContext)
             if (!executedLocally) {
                 allExecutedLocally = false
-                pipelineContext.turn.registerPendingAppTool(call.name, call.id)
             }
         }
 

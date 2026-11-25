@@ -13,15 +13,24 @@ object ProxyStateBridge {
         val adapter = AraWisperManager.chatActivityAdapter
         val turnManager = adapter?.turnManager
         val turnState = turnManager?.state
-        val isRobotBusyState = turnState == TurnManager.State.THINKING || turnState == TurnManager.State.SPEAKING
+        val isAudioPlaying = adapter?.viewModel?.isAudioPlaying?.value == true
+        val isSpeechBusy = AraWisperManager.speechManager.isSpeakingOrCoolingDown()
 
         // Enforce THINKING lock if main's ChatRealtimeHandler drifted to LISTENING while a turn/tool is active
-        if (isTurnBusy && turnState == TurnManager.State.LISTENING && !adapter.viewModel.isAudioPlaying.value) {
+        if (isTurnBusy && turnState == TurnManager.State.LISTENING && !isAudioPlaying) {
             turnManager.setState(TurnManager.State.THINKING)
         }
 
+        // Set LISTENING if TurnManager remained stuck in THINKING after pipeline/speech finished
+        if (!isTurnBusy && !isAudioPlaying && !isSpeechBusy && turnState == TurnManager.State.THINKING) {
+            turnManager.setState(TurnManager.State.LISTENING)
+        }
+
+        val currentTurnState = turnManager?.state
+        val isRobotBusyState = currentTurnState == TurnManager.State.THINKING || currentTurnState == TurnManager.State.SPEAKING
+
         val shouldDrop = adapter?.audioInputController?.isMuted == true ||
-                AraWisperManager.speechManager.isSpeakingOrCoolingDown() ||
+                isSpeechBusy ||
                 isTurnBusy ||
                 isRobotBusyState
 
@@ -34,7 +43,6 @@ object ProxyStateBridge {
     fun markThinking() {
         AraWisperManager.speechManager.isTurnActive = true
         AraWisperManager.chatActivityAdapter?.let { adapter ->
-            adapter.viewModel.setResponseGenerating(true)
             if (adapter.turnManager?.state != TurnManager.State.SPEAKING) {
                 adapter.turnManager?.setState(TurnManager.State.THINKING)
             }
@@ -43,9 +51,14 @@ object ProxyStateBridge {
 
     fun keepTurnActiveForExternalTool() {
         AraWisperManager.speechManager.isTurnActive = true
+        AraWisperManager.chatActivityAdapter?.let { adapter ->
+            if (!adapter.viewModel.isAudioPlaying.value && adapter.turnManager?.state == TurnManager.State.LISTENING) {
+                adapter.turnManager?.setState(TurnManager.State.THINKING)
+            }
+        }
     }
 
-    fun markListening(stopSpeech: Boolean = false, clearCooldown: Boolean = false) {
+    fun markListening(stopSpeech: Boolean = false, clearCooldown: Boolean = false, forceResetUi: Boolean = false) {
         AraWisperManager.speechManager.isTurnActive = false
 
         if (stopSpeech) {
@@ -53,8 +66,18 @@ object ProxyStateBridge {
         }
 
         AraWisperManager.chatActivityAdapter?.let { adapter ->
-            adapter.viewModel.setResponseGenerating(false)
-            if (!AraWisperManager.speechManager.isSpeakingOrCoolingDown()) {
+            if (forceResetUi) {
+                adapter.viewModel.setResponseGenerating(false)
+                adapter.viewModel.setAudioPlaying(false)
+                adapter.turnManager?.setState(TurnManager.State.LISTENING)
+                return
+            }
+
+            val isActivelyPlaying = adapter.viewModel.isAudioPlaying.value
+            val isSpeakingState = adapter.turnManager?.state == TurnManager.State.SPEAKING
+            val isSpeechBusy = AraWisperManager.speechManager.isSpeakingOrCoolingDown()
+            if (!isActivelyPlaying && !isSpeakingState && !isSpeechBusy) {
+                adapter.viewModel.setResponseGenerating(false)
                 adapter.viewModel.setAudioPlaying(false)
                 adapter.turnManager?.setState(TurnManager.State.LISTENING)
             }

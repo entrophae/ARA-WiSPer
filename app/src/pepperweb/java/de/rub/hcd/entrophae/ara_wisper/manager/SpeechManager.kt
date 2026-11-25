@@ -208,6 +208,9 @@ class SpeechManager {
                 } else if (wasPlaying) {
                     wasPlaying = false
                     lastPlaybackEndMs = SystemClock.elapsedRealtime()
+                    if (isTurnActive && adapter.turnManager?.state == TurnManager.State.LISTENING) {
+                        adapter.turnManager?.setState(TurnManager.State.THINKING)
+                    }
                 }
             }
         }

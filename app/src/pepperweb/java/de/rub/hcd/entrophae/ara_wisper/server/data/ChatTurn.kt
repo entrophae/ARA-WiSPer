@@ -20,7 +20,7 @@ data class ChatTurn(
     var userQuery: String = "",
     var userImageUrl: String? = null,
     var llmResponse: String = "",
-    var toolsUsed: MutableList<ToolCallRecord> = mutableListOf(),
+    var toolsUsed: MutableList<ToolCallRecord> = CopyOnWriteArrayList(),
     var toolCalled: String? = null,
     var toolBufferResponse: String? = null,
     var audioBuffer: ByteArrayOutputStream = ByteArrayOutputStream(),

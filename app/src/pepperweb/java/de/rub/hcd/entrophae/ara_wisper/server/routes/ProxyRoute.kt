@@ -30,23 +30,46 @@ fun Route.proxyRouting() {
         DashboardManager.recreateSession {
             sendToApp(it)
         }
+        try {
+            for (frame in incoming) {
+                if (frame is Frame.Text) {
+                    val rawJson = frame.readText()
+                    val json = JSONObject(rawJson)
+                    val type = json.optString(ProxySettingsRepository.Proxy.Keys.TYPE)
 
-        for (frame in incoming) {
-            if (frame is Frame.Text) {
-                val rawJson = frame.readText()
-                val json = JSONObject(rawJson)
-                val type = json.optString(ProxySettingsRepository.Proxy.Keys.TYPE)
+                    when (type) {
+                        ProxySettingsRepository.Proxy.Events.SESSION_UPDATE -> manager.handleSessionUpdate(
+                            json,
+                            rawJson
+                        )
 
-                when (type) {
-                    ProxySettingsRepository.Proxy.Events.SESSION_UPDATE -> manager.handleSessionUpdate(json, rawJson)
-                    ProxySettingsRepository.Proxy.Events.RESP_CANCEL -> manager.updateIsResponseCancelled(true)
-                    ProxySettingsRepository.Proxy.Events.CONV_ITEM_TRUNC -> manager.handleItemTruncated(json)
-                    ProxySettingsRepository.Proxy.Events.INPUT_BUFFER_APPEND -> manager.handleAudioAppend(json)
-                    ProxySettingsRepository.Proxy.Events.CONV_ITEM_CREATE -> manager.handleItemCreate(json, rawJson)
-                    ProxySettingsRepository.Proxy.Events.RESP_CREATE -> manager.handleRespCreate(rawJson)
+                        ProxySettingsRepository.Proxy.Events.RESP_CANCEL -> manager.updateIsResponseCancelled(
+                            true
+                        )
+
+                        ProxySettingsRepository.Proxy.Events.CONV_ITEM_TRUNC -> manager.handleItemTruncated(
+                            json
+                        )
+
+                        ProxySettingsRepository.Proxy.Events.INPUT_BUFFER_APPEND -> manager.handleAudioAppend(
+                            json
+                        )
+
+                        ProxySettingsRepository.Proxy.Events.CONV_ITEM_CREATE -> manager.handleItemCreate(
+                            json,
+                            rawJson
+                        )
+
+                        ProxySettingsRepository.Proxy.Events.RESP_CREATE -> manager.handleRespCreate(
+                            rawJson
+                        )
+                    }
                 }
             }
         }
-        manager.audioProcessor.close()
+        finally {
+            manager.updateIsResponseCancelled(true)
+            manager.audioProcessor.close()
+        }
     }
 }
