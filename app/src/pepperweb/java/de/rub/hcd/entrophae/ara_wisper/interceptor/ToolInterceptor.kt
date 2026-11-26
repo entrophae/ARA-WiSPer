@@ -87,7 +87,7 @@ class ToolInterceptor {
                 toolArgs
             }
 
-            pipelineContext.sendToolCallPacket(toolCallId, toolName, outgoingArgs)
+            pipelineContext.bridge.onDelegateToolCall(toolCallId, toolName, outgoingArgs)
             false
         }
     }

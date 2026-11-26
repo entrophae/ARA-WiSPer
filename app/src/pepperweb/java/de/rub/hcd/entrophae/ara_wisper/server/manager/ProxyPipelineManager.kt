@@ -3,21 +3,18 @@ package de.rub.hcd.entrophae.ara_wisper.server.manager
 import android.util.Base64
 import android.util.Base64.decode
 import android.util.Log
-import ch.fhnw.pepper_realtime.manager.TurnManager
 import de.rub.hcd.entrophae.ara_wisper.interceptor.ToolInterceptor
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxyStateBridge
 import de.rub.hcd.entrophae.ara_wisper.server.data.ChatTurn
 import de.rub.hcd.entrophae.ara_wisper.server.data.PipelineContext
-import de.rub.hcd.entrophae.ara_wisper.server.data.createPipelineContext
 import de.rub.hcd.entrophae.ara_wisper.server.data.logTurnState
 import de.rub.hcd.entrophae.ara_wisper.server.network.DataBaseClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.LlmClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.SttClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.WebSocketPayloads
 import de.rub.hcd.entrophae.ara_wisper.server.service.AudioProcessor
-import de.rub.hcd.entrophae.ara_wisper.server.service.SpeechStreamer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,8 +24,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 class ProxyPipelineManager(
-    private val serverScope: CoroutineScope,
-    private val sendToApp: suspend (String) -> Unit
+    private val serverScope: CoroutineScope
 ) {
     private enum class TurnPhase {
         IDLE,
@@ -39,7 +35,6 @@ class ProxyPipelineManager(
 
     private val toolInterceptor = ToolInterceptor()
     val audioProcessor = AudioProcessor()
-    private val speechStreamer = SpeechStreamer()
 
     @Volatile
     var currentTurn: ChatTurn? = null
@@ -152,17 +147,15 @@ class ProxyPipelineManager(
 
     private fun launchPipeline(turn: ChatTurn, audioData: String = "", initialPrompt: String = "") {
         activePipelineJob?.cancel()
-        speechStreamer.reset()
         phase = TurnPhase.RUNNING
         ProxyStateBridge.markThinking()
 
         val responseId = "proxy_resp_" + java.util.UUID.randomUUID().toString().substring(0, 8)
-        val pipelineContext = createPipelineContext(
-            responseId = responseId,
+        val turnBridge = ProxyStateBridge.startTurn(responseId = responseId, turnId = turn.turnId)
+        val pipelineContext = PipelineContext(
             turn = turn,
-            initialPrompt = initialPrompt,
-            sendPacket = sendToApp,
-            scope = serverScope
+            currentPrompt = initialPrompt,
+            bridge = turnBridge
         )
 
         activePipelineJob = serverScope.launch {
@@ -289,9 +282,7 @@ class ProxyPipelineManager(
         try {
             if (!preparePipelineInput(pipelineContext, audioData)) return
 
-            pipelineContext.sendThinkingPacket()
-            pipelineContext.sendOutputItemAdded("${pipelineContext.turn.turnId}_assistant")
-
+            pipelineContext.bridge.onThinkingStarted()
             runAgenticLoop(pipelineContext)
         } finally {
             if (currentTurn === pipelineContext.turn) {
@@ -311,7 +302,7 @@ class ProxyPipelineManager(
             return pipelineContext.currentPrompt.isNotBlank()
         }
 
-        sendToApp(WebSocketPayloads.userItemPlaceholder(pipelineContext.turn.turnId))
+        pipelineContext.bridge.onUserSpeechCommitted()
 
         val transcribedText = withContext(Dispatchers.IO) {
             SttClient.sendAudioChunk(audioData)
@@ -322,7 +313,7 @@ class ProxyPipelineManager(
         pipelineContext.currentPrompt = transcribedText
         DashboardManager.sendChat(isUser = true, text = transcribedText, userImageUrl = pipelineContext.turn.userImageUrl)
         logTurnState("User Text Appended", pipelineContext.turn)
-        pipelineContext.sendSttTranscriptCompleted(transcribedText)
+        pipelineContext.bridge.onUserTranscriptReady(transcribedText)
 
         return true
     }
@@ -350,7 +341,12 @@ class ProxyPipelineManager(
         return if (LlmClient.toolDetected(llmMessageObj)) {
             executeToolPhase(llmMessageObj, initialLlmText, pipelineContext)
         } else {
-            speechStreamer.speak(initialLlmText, pipelineContext, isThinkingText = false)
+            pipelineContext.bridge.onAssistantOutputChunk(
+                text = initialLlmText,
+                isThinkingText = false,
+                onPcmGenerated = { pcm -> pipelineContext.turn.audioBuffer.write(pcm) },
+                onAcceptedText = { accepted -> pipelineContext.turn.appendLlmText(accepted) }
+            )
             false
         }
     }
@@ -364,7 +360,7 @@ class ProxyPipelineManager(
         val (toolCalls, cleanedText) = LlmClient.extractToolCalls(llmMessageObj, initialLlmText)
 
         if (toolCalls.isEmpty()) {
-            pipelineContext.sendTranscriptDelta("Error")
+            pipelineContext.bridge.onAssistantOutputChunk(text = "Error", isThinkingText = true)
             return false
         }
 
@@ -375,29 +371,30 @@ class ProxyPipelineManager(
 
         var allExecutedLocally = true
         val seenSignaturesInBatch = mutableSetOf<String>()
-        val validCalls = mutableListOf<LlmClient.ParsedToolCall>()
 
-        for (call in toolCalls) {
-            val signature = if (call.name in SINGLE_SHOT_TOOLS) call.name else "${call.name}:${call.arguments}"
-            if (!seenSignaturesInBatch.add(signature)) {
-                Log.w(TAG, "Skipping duplicate parallel tool call: $signature")
-                continue
-            }
+        val validCalls = buildList {
+            for (call in toolCalls) {
+                val signature = if (call.name in SINGLE_SHOT_TOOLS) call.name else "${call.name}:${call.arguments}"
+                if (!seenSignaturesInBatch.add(signature)) {
+                    Log.w(TAG, "Skipping duplicate parallel tool call: $signature")
+                    continue
+                }
 
-            if (isRepeatAppToolBlocked(call.name, pipelineContext.turn)) {
-                Log.w(ProxySettingsRepository.TAG, "Blocking repeat app tool '${call.name}' in same turn; forcing direct answer.")
-                pipelineContext.currentPrompt = """
-                    ${pipelineContext.currentPrompt}
+                if (isRepeatAppToolBlocked(call.name, pipelineContext.turn)) {
+                    Log.w(ProxySettingsRepository.TAG, "Blocking repeat app tool '${call.name}' in same turn; forcing direct answer.")
+                    pipelineContext.currentPrompt = """
+                        ${pipelineContext.currentPrompt}
 
-                    ## System-Info (${call.name}):
-                    Das Tool '${call.name}' wurde in diesem Zug bereits ausgeführt und das Ergebnis liegt dir bereits vor. Rufe '${call.name}' NICHT erneut auf. Nutze die vorhandenen Informationen (und rufe bei Bedarf nur noch ein anderes angefordertes Tool auf, falls noch ein Teil der Anfrage offen ist).
-                """.trimIndent()
-                continue
-            }
+                        ## System-Info (${call.name}):
+                        Das Tool '${call.name}' wurde in diesem Zug bereits ausgeführt und das Ergebnis liegt dir bereits vor. Rufe '${call.name}' NICHT erneut auf. Nutze die vorhandenen Informationen (und rufe bei Bedarf nur noch ein anderes angefordertes Tool auf, falls noch ein Teil der Anfrage offen ist).
+                    """.trimIndent()
+                    continue
+                }
 
-            validCalls.add(call)
-            if (ProxySettingsRepository.isStandardTool(call.name)) {
-                pipelineContext.turn.registerPendingAppTool(call.name, call.id)
+                if (ProxySettingsRepository.isStandardTool(call.name)) {
+                    pipelineContext.turn.registerPendingAppTool(call.name, call.id)
+                }
+                add(call)
             }
         }
 
@@ -420,10 +417,16 @@ class ProxyPipelineManager(
     }
 
     private suspend fun speakThinkingText(text: String, pipelineContext: PipelineContext) {
-        speechStreamer.speak(text, pipelineContext, isThinkingText = true)
+        pipelineContext.bridge.onAssistantOutputChunk(
+            text = text,
+            isThinkingText = true,
+            onPcmGenerated = { pcm -> pipelineContext.turn.audioBuffer.write(pcm) }
+        )
         pipelineContext.turn.toolSynchronizer.recordSpokenText(text)
         DashboardManager.sendChat(isUser = false, text = text)
-        speechStreamer.flush(pipelineContext)
+        pipelineContext.bridge.flushSpeech { pcm ->
+            pipelineContext.turn.audioBuffer.write(pcm)
+        }
     }
 
     suspend fun handleToolCall(toolName: String, toolArgs: String?, toolCallId: String, pipelineContext: PipelineContext): Boolean {
@@ -443,11 +446,16 @@ class ProxyPipelineManager(
     }
 
     private suspend fun finalizePipelineTurn(pipelineContext: PipelineContext) {
-        speechStreamer.flush(pipelineContext)
-        pipelineContext.sendAudioDone()
+        val waitingForTool = (phase == TurnPhase.WAITING_FOR_TOOL)
+        val cancelled = pipelineContext.turn.isCancelled
 
-        if (phase != TurnPhase.WAITING_FOR_TOOL && !pipelineContext.turn.isCancelled) {
-            pipelineContext.sendDone()
+        pipelineContext.bridge.onTurnCompleted(
+            isWaitingForTool = waitingForTool,
+            isCancelled = cancelled,
+            onPcmGenerated = { pcm -> pipelineContext.turn.audioBuffer.write(pcm) }
+        )
+
+        if (!waitingForTool && !cancelled) {
             pipelineContext.turn.persist()
             logTurnState("Finished", pipelineContext.turn)
         }
@@ -473,7 +481,6 @@ class ProxyPipelineManager(
         activePipelineJob = null
         phase = TurnPhase.IDLE
         audioProcessor.reset()
-        speechStreamer.reset()
         ProxyStateBridge.markListening(stopSpeech = true, clearCooldown = true)
     }
 

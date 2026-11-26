@@ -4,6 +4,7 @@ import android.util.Log
 import ch.fhnw.pepper_realtime.R
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appString
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
+import de.rub.hcd.entrophae.ara_wisper.manager.ProxyStateBridge
 import de.rub.hcd.entrophae.ara_wisper.server.manager.DashboardManager
 import de.rub.hcd.entrophae.ara_wisper.server.manager.ProxyPipelineManager
 import de.rub.hcd.entrophae.ara_wisper.server.network.WebSocketPayloads
@@ -18,9 +19,10 @@ fun Route.proxyRouting() {
     webSocket(ProxySettingsRepository.Routes.PROXY) {
         Log.i(appString(R.string.app_name), appString(R.string.proxy_connected))
 
-        val manager = ProxyPipelineManager( serverScope = this ) {
-            sendToApp(it)
+        ProxyStateBridge.attachSession( scope = this ) { packet ->
+            sendToApp(packet)
         }
+        val manager = ProxyPipelineManager(serverScope = this)
 
         // Send initial connection handshake
         val handshake = WebSocketPayloads.sessionCreated()
@@ -70,6 +72,7 @@ fun Route.proxyRouting() {
         finally {
             manager.updateIsResponseCancelled(true)
             manager.audioProcessor.close()
+            ProxyStateBridge.detachSession()
         }
     }
 }
