@@ -68,7 +68,8 @@ async def startup_event():
 
                 CREATE TABLE IF NOT EXISTS experiments (
                     experiment_id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL
+                    name TEXT NOT NULL,
+                    config JSONB DEFAULT '{}'::jsonb
                 );
 
                 CREATE TABLE IF NOT EXISTS experiment_users (
@@ -328,8 +329,8 @@ async def delete_summary(user_id: str):
             )
      return {"status": "success"}
 
-@app.get("/api/status")
-async def get_status():
+@app.get("/api/info")
+async def get_info():
     try:
         async with db_pool.acquire() as connection:
             records = await connection.fetch(
@@ -368,10 +369,14 @@ async def get_experiments():
                 WHERE experiment_id = $1
             ''', exp_id)
 
+            raw_config = exp.get("config", "{}")
+            config_dict = json.loads(raw_config) if isinstance(raw_config, str) else raw_config
+
             results.append({
                 "id": exp_id,
                 "name": exp["name"],
                 "users": [u["user_id"] for u in users],
+                "config": config_dict or {},
                 "files": [{"id": str(f["document_id"]), "name": f["path"]} for f in files]
             })
         return results
@@ -435,6 +440,29 @@ async def remove_user_from_experiment(exp_id: str, user_id: str):
                 exp_id, user_id
             )
     return {"status": "success"}
+
+@app.post("/api/experiments/{exp_id}/config")
+async def update_experiment_config(exp_id: str, request: Request):
+    if not db_pool:
+        return {"status": "error", "message": "Database not connected"}
+
+    try:
+        config_data = await request.json()
+        
+        async with db_pool.acquire() as conn:
+            await conn.execute('''
+                INSERT INTO experiments (experiment_id, name, config) 
+                VALUES ($1, $2, $3::jsonb)
+                ON CONFLICT (experiment_id) DO UPDATE 
+                SET config = EXCLUDED.config
+            ''', exp_id, "Unnamed Experiment", json.dumps(config_data))
+            
+        return {"status": "success"}
+    except json.JSONDecodeError:
+        return {"status": "error", "message": "Invalid JSON payload"}
+    except Exception as e:
+        print(f"Error saving config for {exp_id}: {e}")
+        return {"status": "error", "message": str(e)}
     
 @app.get("/api/experiments/{experiment_id}/documents")
 async def list_experiment_documents(experiment_id: str):

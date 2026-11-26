@@ -13,7 +13,7 @@ async function fetchSystemStatus() {
     });
 
     try {
-        const response = await fetch(window.location.href + '/api/status');
+        const response = await fetch(window.location.href + '/api/info');
         const data = await response.json();
 
         const statusElement = document.getElementById('db-status');
