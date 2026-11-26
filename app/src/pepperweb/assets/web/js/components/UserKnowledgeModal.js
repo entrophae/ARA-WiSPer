@@ -24,13 +24,13 @@ const UserKnowledgeModal = {
         }
     },
     template: `
-         <div class="modal">
+        <div class="modal">
             <div class="modal-content panel">
                 <span class="close-btn" @click="$emit('close')">&times;</span>
                 <h2 class="modal-title">
                     Edit Knowledge: {{ userId }}
                     <button class="btn-icon delete-btn" @click="deleteUser(userId)" title="Delete User">Delete User</button>
-                    <button class="btn-icon delete-btn" @click="clearHistory(userId)" title="Clear History">Clear History️</button>
+                    <button class="btn-icon delete-btn" @click="clearHistory(userId)" title="Clear History">Clear History</button>
                 </h2>
 
 
@@ -81,7 +81,7 @@ const UserKnowledgeModal = {
                     </settings-group>
                 </div>
 
-                <div class="modal-actions" style="margin-top: 20px;">
+                <div class="modal-actions">
                     <button class="btn-secondary" @click="$emit('close')">Cancel</button>
                     <button @click="saveChanges">Save Changes</button>
                 </div>
