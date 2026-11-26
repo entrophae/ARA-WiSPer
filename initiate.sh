@@ -1,23 +1,30 @@
 #!/bin/bash
 source /opt/conda/etc/profile.d/conda.sh
-export $(grep -v '^#' .env | xargs)
+
+set -a
+source .env
+set +a
 
 conda activate $CONDA_ENV_NAME
 
 EXIT_CODE=0
 
+CLEANED=false
 cleanup() {
-    echo "shutting down api and database..."
+    if [ "$CLEANED" = true ]; then return; fi
+    CLEANED=true
+    echo "Shutting down API and database..."
+    kill $CONTROL_PID 2>/dev/null
+    wait $CONTROL_PID 2>/dev/null
     pg_ctl -D $DB_DATA_DIR stop
     exit $EXIT_CODE
 }
 
-trap 'cleanup' SIGINT SIGTERM
+trap cleanup EXIT SIGINT SIGTERM SIGHUP
 
 pg_ctl -D $DB_DATA_DIR -l $DB_DATA_DIR/server.log start
 
-echo starting service
-
+echo "Starting PostgreSQL API on port $API_PORT..."
 python -u -m gunicorn main:app \
   -k uvicorn.workers.UvicornWorker \
   --workers 1 \
