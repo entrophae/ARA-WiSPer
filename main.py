@@ -105,6 +105,9 @@ async def audio_intake_stream(websocket: WebSocket):
             audio_b64 = data.get("audio_b64")
             
             if audio_b64:
+                while engine.model_status == "loading":
+                    await asyncio.sleep(0.5)
+
                 if not engine.is_ready():
                     await websocket.send_json({
                         "error": f"STT engine is {engine.model_status}",
@@ -136,6 +139,9 @@ async def audio_intake_stream(websocket: WebSocket):
         
 @app.post("/api")
 async def unified_transcribe(request: Request):
+    while engine.model_status == "loading":
+        await asyncio.sleep(0.5)
+
     if not engine.is_ready():
         return JSONResponse(
             status_code=503,
@@ -151,7 +157,11 @@ async def unified_transcribe(request: Request):
     origin = request.headers.get("origin", "")
     referer = request.headers.get("referer", "")
 
-    is_internal = (origin and host in origin) or (referer and host in referer)
+    is_internal = (
+        request.headers.get("x-internal-ui") == "1"
+        or (origin and host in origin)
+        or (referer and host in referer)
+    )
 
     forwarded_for = request.headers.get("x-forwarded-for", "")
     if forwarded_for:
