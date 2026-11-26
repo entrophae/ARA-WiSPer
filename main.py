@@ -5,10 +5,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.openapi.docs import get_swagger_ui_html
 import asyncio
 from datetime import datetime
-import json
 import stt_engine as engine
 import state
-import getpass
 import os
 from dotenv import load_dotenv
 
@@ -42,6 +40,7 @@ async def root(request: Request):
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(broadcast_worker())
+    asyncio.create_task(asyncio.to_thread(engine.load_model))
 
 async def broadcast_worker():
     while True:
@@ -95,6 +94,13 @@ async def audio_intake_stream(websocket: WebSocket):
             audio_b64 = data.get("audio_b64")
             
             if audio_b64:
+                if not engine.is_ready():
+                    await websocket.send_json({
+                        "error": f"STT engine is {engine.model_status}",
+                        "status": engine.model_status,
+                    })
+                    continue
+
                 state.event_queue.append({
                     "type": "stats_update",
                     "total_calls": state.total_api_calls,
@@ -119,6 +125,15 @@ async def audio_intake_stream(websocket: WebSocket):
         
 @app.post("/api")
 async def unified_transcribe(request: Request):
+    if not engine.is_ready():
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": f"STT engine is {engine.model_status}. Try again shortly.",
+                "status": engine.model_status,
+            },
+        )
+
     content_type = request.headers.get("content-type", "")
 
     host = request.headers.get("host", "")
@@ -182,7 +197,7 @@ async def unified_transcribe(request: Request):
         return {"task_id": task_id}
 
     else:
-        print(f"Error: POST Unsupported Type")
+        print("Error: POST Unsupported Type")
         return JSONResponse(status_code=415, content={"error": "Unsupported Media Type. Send JSON or Form-Data."})
         
 @app.get("/status/{task_id}")
@@ -192,8 +207,15 @@ async def get_status(task_id: str):
     return state.tasks[task_id]
 
 @app.get("/status")
-def get_status_api():
-    return { "status": "online" }
+async def get_status_api():
+    response = {
+        "status": engine.model_status,
+        "model": engine.model_name,
+        "processor": engine.processor,
+    }
+    if engine.model_error:
+        response["error"] = engine.model_error
+    return response
 
 @app.get("/stats")
 async def get_stats():
