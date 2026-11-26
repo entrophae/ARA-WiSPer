@@ -19,6 +19,11 @@ import io.ktor.http.content.forEachPart
 import io.ktor.http.content.streamProvider
 import org.json.JSONObject
 
+/**
+ * Ktor REST routes for managing the RAG knowledge base from the web dashboard.
+ *
+ * Proxies document uploads, corpus listings, and document deletion requests to [RagClient].
+ */
 fun Route.ragRouting() {
     get(ProxySettingsRepository.Routes.RAG_USERS) {
         val userId = call.request.queryParameters["userId"]

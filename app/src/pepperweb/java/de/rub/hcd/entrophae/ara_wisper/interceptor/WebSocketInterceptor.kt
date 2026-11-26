@@ -6,6 +6,12 @@ import ch.fhnw.pepper_realtime.network.WebSocketConnectionCallback
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 
+/**
+ * Outbound WebSocket connection interceptor hooking the host app into the local proxy.
+ *
+ * Reroutes Realtime API WebSocket connections from `pepper_realtime` to the embedded
+ * [AraWisperServer] proxy endpoint when custom/local LLM mode is active.
+ */
 object WebSocketInterceptor {
 
     fun interceptConnection(

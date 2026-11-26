@@ -6,6 +6,14 @@ import ch.fhnw.pepper_realtime.manager.TurnManager
 import ch.fhnw.pepper_realtime.ui.ChatActivity
 import ch.fhnw.pepper_realtime.ui.settings.SettingsViewModel
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
+
+/**
+ * Lifecycle-safe facade wrapping the host `ChatActivity` instance.
+ *
+ * Exposes `ChatViewModel`, `TurnManager`, `ToolContext`, and `AudioInputController` to
+ * the `ara_wisper` module while providing clean helpers for microphone toggling,
+ * speech interruption, and session restarts.
+ */
 class ChatActivityAdapter(activity: ChatActivity) {
 
     private val TAG = "ARA WISPER CHATACTIVITY ADAPTER"

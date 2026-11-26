@@ -10,6 +10,13 @@ import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import org.webrtc.*
 
+/**
+ * WebRTC camera capture and peer-connection manager for live dashboard video streaming.
+ *
+ * Captures frames from the device/robot camera, handles SDP offer/answer and ICE
+ * candidate signaling over the dashboard WebSocket, and restarts streams after vision snapshots.
+ * Currently only device camera!
+ */
 class DashboardVideoManager(
     private val sendWebSocketMessage: suspend (String) -> Unit
 ) {

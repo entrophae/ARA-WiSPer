@@ -10,6 +10,12 @@ import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.TrustManagerFactorySpi
 import javax.net.ssl.X509TrustManager
 
+/**
+ * Custom TLS trust manager loading bundled root CA certificates (`res/raw/cacert.pem`).
+ *
+ * Enables Pepper's tablet OS running under Android 7.0 to verify modern HTTPS
+ * endpoints whose root certificates are absent from the system trust store.
+ */
 internal class BundledTrustProvider(
     defaultTrustManager: X509TrustManager
 ) : Provider(ProxySettingsRepository.trustProviderName, 1.0, "Bundled CA TrustManager") {

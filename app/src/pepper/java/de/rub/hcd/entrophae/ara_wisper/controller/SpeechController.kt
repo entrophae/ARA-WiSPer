@@ -7,6 +7,12 @@ import com.aldebaran.qi.sdk.builder.SayBuilder
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
 import java.util.concurrent.atomic.AtomicInteger
 
+/**
+ * Hardware QiSDK speech driver for the physical Pepper robot.
+ *
+ * Queues and executes `Say` actions on Pepper's onboard TTS engine, tracks in-flight
+ * utterances for [SpeechManager] flush synchronization, and supports immediate cancellation.
+ */
 class SpeechController {
     private val queueLock = Any()
     private var activeSayFuture: Future<Void>? = null

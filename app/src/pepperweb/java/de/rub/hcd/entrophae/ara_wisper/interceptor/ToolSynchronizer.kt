@@ -6,9 +6,10 @@ import kotlinx.coroutines.delay
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Coordinates turn-scoped speech playback and audio-producing tools (e.g. play_melody)
- * so local TTS finishes draining before an audio tool starts and tracks already-spoken
- * text within a turn to prevent stateless LLM rounds from repeating themselves.
+ * Turn-level coordinator synchronizing spoken "thinking" utterances with tool execution.
+ *
+ * Tracks sentences already spoken aloud before or between tool calls so downstream
+ * LLM prompts avoid repeating facts and sequential tools wait cleanly for speech pacing.
  */
 class ToolSynchronizer(
     private val audioOutputTools: Set<String> = DEFAULT_AUDIO_OUTPUT_TOOLS

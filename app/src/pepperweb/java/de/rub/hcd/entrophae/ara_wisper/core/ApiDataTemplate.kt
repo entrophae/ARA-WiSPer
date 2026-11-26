@@ -14,6 +14,12 @@ import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * Declarative configuration schema definitions for the web dashboard settings UI.
+ *
+ * Builds structured JSON schemas for LLM/VLM/Embedding models, database/speech/tool
+ * endpoints, provider presets, Azure settings, and dynamic host app preferences.
+ */
 object ApiDataTemplate {
 
     @Keep

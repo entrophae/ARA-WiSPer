@@ -15,6 +15,14 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import org.json.JSONObject
 
+/**
+ * Ktor WebSocket route implementing the local OpenAI Realtime-compatible proxy endpoint.
+ *
+ * Attaches and detaches the active WebSocket session on [ProxyStateBridge], sends the
+ * initial session handshake, and dispatches incoming Realtime protocol frames
+ * (`session.update`, `input_audio_buffer.append`, `conversation.item.create`,
+ * `response.create`, `response.cancel`) to [ProxyPipelineManager].
+ */
 fun Route.proxyRouting() {
     webSocket(ProxySettingsRepository.Routes.PROXY) {
         Log.i(appString(R.string.app_name), appString(R.string.proxy_connected))

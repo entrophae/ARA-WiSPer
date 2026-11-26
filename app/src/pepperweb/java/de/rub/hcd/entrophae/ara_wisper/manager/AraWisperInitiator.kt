@@ -5,8 +5,14 @@ import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
-import de.rub.hcd.entrophae.ara_wisper.network.installConscryptSecurity
 
+/**
+ * Zero-touch startup initializer registered in the `pepperweb` flavor manifest.
+ *
+ * Automatically bootstraps [AraWisperManager] when the Android process launches so
+ * activity lifecycle hooks, security providers, and speech services are ready before
+ * `ChatActivity` is created—without modifying upstream `src/main` classes.
+ */
 class AraWisperInitiator : ContentProvider() {
 
     override fun onCreate(): Boolean {

@@ -16,6 +16,12 @@ import com.konovalov.vad.yamnet.config.SampleRate as yamnetSampleRate
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appContext
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 
+/**
+ * Voice Activity Detection (VAD) engine evaluating raw audio frames for human speech.
+ *
+ * Provides frame-level speech probability/detection to segment continuous microphone
+ * streams into discrete conversational turns.
+ */
 class VadProvider (
     val frameSizeBytes: Int,
     val isSpeech: (ByteArray) -> Boolean,

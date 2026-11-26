@@ -9,6 +9,12 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import org.json.JSONObject
 
+/**
+ * Ktor REST route exposing proxy route paths, event keys, and configuration constants.
+ *
+ * Allows the web dashboard frontend to dynamically discover backend endpoints and
+ * protocol identifiers without hardcoding them in JavaScript.
+ */
 fun Route.constantsRouting(viewModel: ChatViewModel) {
     get(ProxySettingsRepository.Routes.CONSTANTS) {
         // Map your Kotlin constants to the keys your JS expects

@@ -9,6 +9,13 @@ import org.conscrypt.Conscrypt
 import java.security.Security
 import javax.net.ssl.SSLContext
 
+/**
+ * Security provider bootstrapper installing Conscrypt.
+ *
+ * Upgrades the JVM's default SSL/TLS stack at process startup so modern TLS 1.2/1.3
+ * cipher suites work reliably for external API and WebSocket connections.
+ */
+
 // Needs to be called before anything in the app touches an OkHttpClient
 // so that it is guaranteed that Conscrypt is registered
 // Otherwise, OkHttp is locked to the Android 6.0 default provider

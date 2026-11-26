@@ -1,7 +1,6 @@
 package de.rub.hcd.entrophae.ara_wisper.server.routes
 
 import android.util.Log
-import androidx.core.content.edit
 import ch.fhnw.pepper_realtime.R
 import ch.fhnw.pepper_realtime.ui.ChatMessage
 import ch.fhnw.pepper_realtime.ui.ChatViewModel
@@ -36,6 +35,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import java.util.Collections
 
+/**
+ * Ktor WebSocket and REST routing layer for the browser-based control dashboard.
+ *
+ * Handles real-time status/log streaming, WebRTC signaling, chat/speak/interrupt/mute
+ * commands, user and knowledge management, model probing, and backend health checks.
+ */
 fun Route.dashboardRouting(viewModel: ChatViewModel) {
 
     val activeConnections = Collections.synchronizedSet(LinkedHashSet<DefaultWebSocketServerSession>())

@@ -12,6 +12,12 @@ import java.security.KeyStore
 import java.security.Provider
 import java.security.Security
 
+/**
+ * Self-signed SSL/TLS `KeyStore` generator for the embedded Ktor server.
+ *
+ * Provisions local HTTPS/WSS credentials so browser clients can access the web
+ * dashboard and WebRTC camera stream over secure contexts.
+ */
 fun getOrCreateDynamicKeyStore(): KeyStore {
     val filesDir = AraWisperManager.app.filesDir
     val password = ProxySettingsRepository.ksPassword

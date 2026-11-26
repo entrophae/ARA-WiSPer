@@ -2,12 +2,16 @@ package de.rub.hcd.entrophae.ara_wisper.server.service
 
 import android.util.Base64
 import android.util.Log
-import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import de.rub.hcd.entrophae.ara_wisper.server.manager.DashboardManager
 import java.io.ByteArrayOutputStream
 
-
+/**
+ * Inbound PCM audio accumulator and Voice Activity Detection (VAD) segmenter.
+ *
+ * Buffers incoming 16 kHz microphone frames, detects speech onset and trailing silence
+ * via [VadProvider], and emits complete Base64-encoded speech utterances for STT.
+ */
 class AudioProcessor(
     private val preRollChunks: Int = 3,
     private val silenceChunksThreshold: Int = 15

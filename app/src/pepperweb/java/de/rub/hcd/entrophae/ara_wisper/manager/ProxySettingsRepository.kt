@@ -7,6 +7,12 @@ import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager.appPrefs
 import androidx.core.content.edit
 import ch.fhnw.pepper_realtime.manager.ApiKeyManager
 
+/**
+ * Central `SharedPreferences`-backed repository and protocol constant definitions.
+ *
+ * Stores API endpoints, credentials, active user ID, enabled tool sets, Ktor route
+ * paths, Realtime/Dashboard WebSocket event keys, and standard-vs-local tool routing rules.
+ */
 object ProxySettingsRepository {
     const val PREFS_NAME = "PepperDialogPrefs"
     const val TAG = "AraWisper Proxy"

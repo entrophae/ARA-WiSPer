@@ -10,9 +10,11 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Temporarily saves turns of conversation to keep track of the current state before saving in a database.
- * A turn consists of the userQuery, llmResponse, toolCalled and the toolBufferResponse.
- * Identification exists via userId and turnId.
+ * Mutable per-turn state container tracking a single user-assistant interaction.
+ *
+ * Accumulates user transcripts, camera/image attachments, assistant text, synthesized
+ * audio buffers, and asynchronous tool call records before persisting the finalized
+ * turn to [DataBaseClient] and [DashboardManager].
  */
 data class ChatTurn(
     val userId: String,

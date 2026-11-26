@@ -12,6 +12,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
+/**
+ * Event bus and broadcaster pushing live telemetry and chat updates to the web dashboard.
+ *
+ * Emits serialized JSON payloads for user/assistant chat bubbles, image attachments,
+ * protocol traffic logs, error alerts, and history refresh triggers.
+ */
 object DashboardManager {
 
     private val _events = MutableSharedFlow<JSONObject>(extraBufferCapacity = 100)

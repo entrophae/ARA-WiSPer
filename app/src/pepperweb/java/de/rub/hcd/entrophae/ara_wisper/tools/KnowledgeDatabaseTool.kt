@@ -4,13 +4,18 @@ import ch.fhnw.pepper_realtime.tools.Tool
 import ch.fhnw.pepper_realtime.tools.ToolContext
 import org.json.JSONObject
 import android.util.Log
-import ch.fhnw.pepper_realtime.manager.SettingsRepository
 import ch.fhnw.pepper_realtime.tools.information.SearchInternetTool
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import de.rub.hcd.entrophae.ara_wisper.server.network.DataBaseClient
 import de.rub.hcd.entrophae.ara_wisper.server.network.RagClient
 import org.json.JSONArray
 
+/**
+ * Local proxy tool (`search_primary_knowledge_database`) for RAG knowledge retrieval.
+ *
+ * Queries [RagClient] with the model's search parameters and returns matching context
+ * snippets directly into the agentic tool loop without round-tripping to the host app.
+ */
 class KnowledgeDatabaseTool : Tool  {
     override fun getName(): String = "search_primary_knowledge_database"
 

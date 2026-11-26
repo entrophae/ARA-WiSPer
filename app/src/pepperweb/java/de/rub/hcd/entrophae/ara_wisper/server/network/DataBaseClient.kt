@@ -18,6 +18,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 
+/**
+ * HTTP client for the external conversation history and user memory persistence service.
+ *
+ * Handles user CRUD, turn persistence, user knowledge summary updates, history
+ * deletion, and service health checks.
+ */
 object DataBaseClient {
     private val client = HttpClientManager.getInstance().getQuickApiClient()
 

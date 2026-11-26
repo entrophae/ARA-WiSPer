@@ -35,6 +35,12 @@ import kotlinx.coroutines.sync.withLock
 import java.io.FileNotFoundException
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Embedded Ktor HTTP/WebSocket server lifecycle manager.
+ *
+ * Starts and stops the local web server hosting static dashboard assets, REST health
+ * and management routes, the dashboard WebSocket, and the Realtime API proxy endpoint.
+ */
 class AraWisperServer() {
     companion object {
         private val lifecycleMutex = Mutex()

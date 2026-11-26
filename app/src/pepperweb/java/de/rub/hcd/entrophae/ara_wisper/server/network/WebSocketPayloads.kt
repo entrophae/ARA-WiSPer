@@ -4,6 +4,12 @@ import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * Protocol serializer and parser for OpenAI Realtime API-compatible WebSocket frames.
+ *
+ * Constructs outbound server events (`session.created`, `thinking`, `transcript.delta`,
+ * `audio.delta`, `toolCall`, `audio.done`, `done`) and extracts user text/image inputs.
+ */
 object WebSocketPayloads {
     fun sessionCreated(): String {
         return JSONObject().apply {
@@ -140,7 +146,7 @@ object WebSocketPayloads {
 
     fun userItemPlaceholder(itemId: String): String {
         return JSONObject().apply {
-            put("type", "conversation.item.create")
+            put("type", "conversation.item.created")
             put("item", JSONObject().apply {
                 put("id", itemId)
                 put("type", "message")

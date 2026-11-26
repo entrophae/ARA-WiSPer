@@ -10,6 +10,13 @@ import de.rub.hcd.entrophae.ara_wisper.server.data.PipelineContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * Hybrid tool registry injector, execution router, and multistep prompt builder.
+ *
+ * Merges local `ara_wisper` tools (e.g., RAG knowledge search) with standard host tools,
+ * executes local tools directly on the proxy while delegating hardware/UI tools through
+ * [TurnBridge], and formats deduplicated tool/speech history for subsequent LLM rounds.
+ */
 class ToolInterceptor {
     private val localRegistry = AraWisperToolRegistry()
 

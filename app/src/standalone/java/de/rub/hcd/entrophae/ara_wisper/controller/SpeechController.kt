@@ -10,6 +10,12 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
+/**
+ * Android `TextToSpeech` driver for standalone tablet/emulator execution.
+ *
+ * Synthesizes sentences either into temporary WAV/PCM buffers for `AudioPlayer` streaming
+ * or directly through device speakers while tracking utterance completion and cancellation.
+ */
 class SpeechController {
     private data class TtsTask(
         val generation: Int,

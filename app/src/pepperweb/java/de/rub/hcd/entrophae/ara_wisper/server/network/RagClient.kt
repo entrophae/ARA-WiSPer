@@ -14,6 +14,12 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.net.URLEncoder
 
+/**
+ * HTTP client for the external Retrieval-Augmented Generation (RAG) knowledge service.
+ *
+ * Executes semantic knowledge queries and manages document ingestion, listing, and
+ * health status checks.
+ */
 object RagClient {
     private val client = HttpClientManager.getInstance().getQuickApiClient()
 

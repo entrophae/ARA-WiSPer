@@ -15,6 +15,13 @@ import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/**
+ * Speech-to-Text (STT) HTTP client and interruption transcript aligner.
+ *
+ * Transcribes VAD-segmented audio chunks into user text and reconciles truncated
+ * assistant responses when the user interrupts speech mid-utterance.
+ * The latter is not fully implemented.
+ */
 object SttClient {
     private val client = HttpClientManager.getInstance().getApiClient()
 

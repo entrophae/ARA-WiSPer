@@ -5,6 +5,12 @@ import ch.fhnw.pepper_realtime.network.RealtimeApiProvider
 import ch.fhnw.pepper_realtime.network.XAI_FAST_MODEL
 import ch.fhnw.pepper_realtime.network.XAI_THINK_FAST_MODEL
 
+/**
+ * Default configuration values and fallback constants for host settings.
+ *
+ * Supplies baseline parameters when initializing preferences or resetting custom
+ * provider configurations.
+ */
 object AppSettingsDefaults {
 
     data class SettingOption(val label: String, val value: String)

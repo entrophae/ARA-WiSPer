@@ -6,6 +6,13 @@ import de.rub.hcd.entrophae.ara_wisper.controller.SpeechController
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
+/**
+ * Pure TTS sentence buffer, synthesis coordinator, and post-speech echo cooldown tracker.
+ *
+ * Splits streaming LLM output at sentence boundaries, delegates synthesis/playback to
+ * [SpeechController] (direct QiSDK `Say` on Pepper or PCM generation for `AudioPlayer` in
+ * standalone mode), and reports playback state changes back to [ProxyStateBridge].
+ */
 class SpeechManager {
     private val speechController = SpeechController()
     private val bufferLock = Any()

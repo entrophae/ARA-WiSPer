@@ -6,6 +6,13 @@ import ch.fhnw.pepper_realtime.tools.ToolContext
 import de.rub.hcd.entrophae.ara_wisper.tools.KnowledgeDatabaseTool
 import org.json.JSONObject
 
+/**
+ * Registry and execution dispatcher for proxy-hosted local tools.
+ *
+ * Filters active local tools (such as [KnowledgeDatabaseTool]) by user settings,
+ * exports their OpenAI-compatible JSON schemas for injection,
+ * and executes them directly inside the proxy loop.
+ */
 class AraWisperToolRegistry {
 
     fun interface ToolFactory {

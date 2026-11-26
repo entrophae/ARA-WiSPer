@@ -22,6 +22,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 
+/**
+ * OpenAI-compatible Chat Completions HTTP client for LLM and VLM inference.
+ *
+ * Fetches available models, probes vision/tool capabilities, formats multi-turn tool
+ * histories and image attachments, and parses assistant messages and tool calls.
+ */
 object LlmClient {
     private val client = HttpClientManager.getInstance().getApiClient()
 

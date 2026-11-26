@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.AssetManager
 import android.os.Bundle
-import android.util.Log
 import androidx.lifecycle.ViewModelProvider
 import ch.fhnw.pepper_realtime.ui.ChatActivity
 import ch.fhnw.pepper_realtime.ui.ChatViewModel
@@ -31,6 +30,14 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.SocketException
 
+/**
+ * Process-wide lifecycle root and host-application integration singleton.
+ *
+ * Implements [Application.ActivityLifecycleCallbacks] to wrap `ChatActivity` inside
+ * [ChatActivityAdapter], manage the embedded Ktor server ([AraWisperServer]), provide
+ * global access to Android resources and long-lived managers ([SpeechManager],
+ * [DashboardVideoManager]).
+ */
 object AraWisperManager : Application.ActivityLifecycleCallbacks {
     private var webServer: AraWisperServer? = null
 
@@ -117,7 +124,7 @@ object AraWisperManager : Application.ActivityLifecycleCallbacks {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(Color.DarkGray.copy()),
+                                    .background(Color.DarkGray.copy(alpha = 0.8f)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {

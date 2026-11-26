@@ -1,18 +1,19 @@
 package de.rub.hcd.entrophae.ara_wisper.core
 
-import android.app.Activity
-import android.content.SharedPreferences
 import android.util.Log
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.ViewModelStoreOwner
 import ch.fhnw.pepper_realtime.manager.SettingsRepository
 import ch.fhnw.pepper_realtime.network.RealtimeApiProvider
-import ch.fhnw.pepper_realtime.ui.settings.SettingsViewModel
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * Bidirectional persistence adapter between Android `SharedPreferences` and dashboard JSON.
+ *
+ * Serializes all active proxy and host settings for initial WebSocket sync and writes
+ * incoming dashboard configuration updates back to local storage.
+ */
 object SettingsAdapter {
 
     fun readAllAsJson(): JSONObject {

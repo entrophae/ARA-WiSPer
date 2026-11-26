@@ -23,6 +23,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
+/**
+ * Core conversational orchestration engine for the Realtime API proxy endpoint.
+ *
+ * Drives the turn lifecycle (`IDLE`, `RUNNING`, `WAITING_FOR_TOOL`, `HOLDING_TOOL_RESULT`),
+ * routes incoming audio through VAD and [SttClient], executes the multi-round agentic
+ * LLM loop, and coordinates local versus host-delegated tool calls via [TurnBridge].
+ */
 class ProxyPipelineManager(
     private val serverScope: CoroutineScope
 ) {
