@@ -12,6 +12,7 @@ dependencyResolutionManagement {
         mavenCentral()
         maven { url 'https://qisdk.softbankrobotics.com/sdk/maven' }
         maven { url 'https://csspeechstorage.blob.core.windows.net/maven/' }
+        maven { url 'https://jitpack.io' }
     }
 }
 rootProject.name = "pepper_android_realtime"

@@ -27,12 +27,16 @@ class RealtimeAudioInputManager(
      * Set to true when using Google provider (uses 16kHz input - Google's native rate)
      */
     var isGoogleProvider: Boolean = false
+    /**
+     * Set to true when using Proxy provider with fasterwhisper (uses 16kHz input)
+     */
+    var isProxy: Boolean = false
     
     private val currentSampleRate: Int
-        get() = if (isGoogleProvider) GOOGLE_SAMPLE_RATE else OPENAI_SAMPLE_RATE
+        get() = if (isGoogleProvider || isProxy) GOOGLE_SAMPLE_RATE else OPENAI_SAMPLE_RATE
     
     private val currentBufferSizeBytes: Int
-        get() = if (isGoogleProvider) GOOGLE_BUFFER_SIZE_BYTES else OPENAI_BUFFER_SIZE_BYTES
+        get() = if (isGoogleProvider || isProxy) GOOGLE_BUFFER_SIZE_BYTES else OPENAI_BUFFER_SIZE_BYTES
 
     val isCapturing: Boolean
         get() = _isCapturing.get()
@@ -76,7 +80,7 @@ class RealtimeAudioInputManager(
                 return false
             }
 
-            Log.i(TAG, "AudioRecord initialized: ${sampleRate}Hz (${if (isGoogleProvider) "Google" else "OpenAI"}), buffer=$bufferSizeInBytes bytes")
+            Log.i(TAG, "AudioRecord initialized: ${sampleRate}Hz (${if (isProxy) "Proxy" else if (isGoogleProvider) "Google" else "OpenAI"}), buffer=$bufferSizeInBytes bytes")
             return true
 
         } catch (e: SecurityException) {
@@ -167,7 +171,7 @@ class RealtimeAudioInputManager(
         val buffer = ByteArray(currentBufferSizeBytes)
         var consecutiveErrors = 0
 
-        Log.d(TAG, "Capture loop started (${if (isGoogleProvider) "Google 16kHz" else "OpenAI 24kHz"})")
+        Log.d(TAG, "Capture loop started (${if (isProxy) "Proxy 16kHz" else if(isGoogleProvider) "Google 16kHz" else "OpenAI 24kHz"})")
 
         while (_isCapturing.get()) {
             try {

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARA-WiSPer | Vue Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body>
+
+<div id="app">
+    <div class="sidebar">
+        <div class="panel">
+            <div id="title">
+                <h1>ARA-WiSPer</h1>
+                <p class="subtitle">Ruhr-Universität Bochum | HCD</p>
+            </div>
+            <div id="config" class="gapped-flexrow">
+                <button @click="showSettings = true" class="toggle-button">⚙️ API Configuration</button>
+                <button class="toggle-button" @click="store.toggleLLMMode()">
+                    {{ store.isLLMMode ? 'Turn Off' : 'Activate' }} LLM Mode
+                </button>
+                <button v-if="!store.isVideoStream" class="toggle-button" @click="store.toggleVideoStream()" title="Toggle Cam">📹 Toggle Video</button>
+            </div>
+            <videostream v-if="store.isVideoStream" ></videostream>
+            <div id="status">
+                <h2>Status</h2>
+                <div class="status-header">
+                    <p  class="subtitle">Connections</p>
+                    <div class="status-badge" :class="{ connected: store.isConnected }">
+                        Robot
+                    </div>
+                    <div class="status-badge" :class="{ connected: store.isDBConnected }">
+                        Database
+                    </div>
+                    <div class="status-badge" :class="{ connected: store.isSTTConnected }">
+                        STT
+                    </div>
+                    <div class="status-badge" :class="{ connected: store.isRAGConnected }">
+                        RAG Agent
+                    </div>
+                </div>
+                <div class="status-header">
+                    <p  class="subtitle">Configurations</p>
+                    <div class="status-badge" :class="{ connected: store.isLLMConfigured }">
+                        LLM
+                    </div>
+                    <div class="status-badge" :class="{ connected: store.isVLMConfigured }">
+                        VLM
+                    </div>
+                    <div class="status-badge" :class="{ connected: store.isELMConfigured }">
+                        ELM
+                    </div>
+                </div>
+                <div class="status-header">
+                    <p  class="subtitle">Microphone</p>
+                    <div class="status-badge" :class="{ listening: store.isMicActive }">
+                        Mic {{ store.isMicActive ? 'Listening' : 'Idle' }}
+                    </div>
+                    <button :class="{ muted: store.isMuted }" @click="store.toggleMute()">
+                        {{ store.isMuted ? 'Unmute' : 'Mute' }}
+                    </button>
+                    <button @click="store.interrupt()">
+                        Interrupt
+                    </button>
+                </div>
+            </div>
+            <div id="control">
+                <h2>Manual Control</h2>
+                <div v-if="store.isLLMMode" class="control-group">
+                    <p class="subtitle">Prompt as User</p>
+                    <input type="text" v-model="promptInput" @keyup.enter="sendPrompt" placeholder="Enter prompt to LLM..." autocomplete="off">
+                    <button @click="sendPrompt">Send</button>
+                </div>
+                <div class="control-group">
+                    <p class="subtitle">Speak as Robot</p>
+                    <input type="text" v-model="speakInput" @keyup.enter="sendSpeak" placeholder="Enter text to speak..." autocomplete="off">
+                    <button @click="sendSpeak">Send</button>
+                </div>
+            </div>
+            <div id="traffic">
+                <h2>Traffic Status</h2>
+                <div class="proxy-pipeline-status" v-if="store.proxyLogs.length > 0">
+                    <div v-for="log in store.proxyLogs" :key="log.id" :class="['pipeline-badge', log.color]" :title="log.rawJson">
+                        {{ log.label }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="main-content">
+
+        <div class="top-bar">
+            <div class="panel">
+                <h2>User Actions</h2>
+                <div class="control-group" v-if="store.users.length > 0">
+                    <select v-model="store.activeUserId" @change="store.selectUser(store.activeUserId)">
+                        <option disabled value="">Select an existing user</option>
+                        <option v-for="userId in store.users" :key="userId" :value="userId">
+                            {{ userId }}
+                        </option>
+                    </select>
+                    <button @click="promptNewUser" title="Add new user">Add New</button>
+                    <button @click="showUserEdit = true" title="Edit user knowledge" :disabled="!store.selectedUser">Edit Knowledge</button>
+                    <button @click="showExperimentManager = true" title="Manage RAG Experiments">Experiments</button>
+                </div>
+            </div>
+        </div>
+        <div class="panel panel-fill">
+            <h2>Live System Log</h2>
+            <div class="terminal" id="terminalLog" ref="terminalLog">
+                <div v-for="log in store.terminalLogs" :key="log.id"
+                    :class="['log-entry', log.type, log.sender ? log.sender.toLowerCase() : '']">
+
+                    <span :class="log.type" v-if="log.type !== 'chat-bubble'">{{ log.text }}</span>
+
+                    <div v-else class="bubble">
+                        <div v-if="log.userImageUrl" class="chat-bubble-image-wrapper">
+                            <img :src="log.userImageUrl" class="chat-bubble-img" alt="Vision Payload" />
+                        </div>
+                        <div v-if="log.text" class="chat-bubble-text">{{ log.text }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <settings-modal
+        v-if="showSettings"
+        :initial-keys="store.apiData"
+        :schema="store.apiSchema"
+        @close="showSettings = false">
+    </settings-modal>
+
+    <user-knowledge-modal
+        v-if="showUserEdit"
+        :user-id="store.selectedUser"
+        :initial-summary="store.userSummary"
+        :initial-history="store.userChatHistory"
+        @close="showUserEdit = false">
+    </user-knowledge-modal>
+
+    <experiment-manager-modal
+        v-if="showExperimentManager"
+        :experiments="store.experiments"
+        :all-users="store.users"
+        @close="showExperimentManager = false">
+    </experiment-manager-modal>
+
+    <div class="toast-container">
+        <transition-group name="toast-fade">
+            <div v-for="toast in store.toasts" :key="toast.id" :class="['toast', toast.type]">
+                {{ toast.text }}
+            </div>
+        </transition-group>
+    </div>
+</div>
+
+<script src="js/services/api.js"></script>
+<script src="js/store.js"></script>
+<script src="js/components/SettingsModal.js"></script>
+<script src="js/components/UserKnowledgeModal.js"></script>
+<script src="js/components/ExperimentBuilder.js"></script>
+<script src="js/components/ExperimentManagerModal.js"></script>
+<script src="js/components/VideoStream.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
