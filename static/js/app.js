@@ -4,6 +4,7 @@ const WSS = HREF.replace(/^http/, "ws");
 
 let mediaRecorder;
 let audioChunks = [];
+let isModelReady = false;
 let fileInput, fileDisplay, fileSendBtn, startBtn, stopBtn, apiUrlInput, copyApiBtn, connectionsNr, requestsNr, apiCardTitle, wssUrlInput, copyWssBtn, wconnectionsNr, wrequestsNr, wssState, wssCardTitle, engineState, engineName, engineProcessor;
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -65,6 +66,7 @@ document.addEventListener("DOMContentLoaded", () => {
     checkEngineStatus();
     updateStats();
     loadHistory();
+    connectWebSocket();
 
     fileInput.addEventListener("change", () => {
         fileSendBtn.disabled = !fileInput.files.length || !isModelReady;
@@ -112,16 +114,20 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         setRecordingState(false);
     };
+});
 
+function connectWebSocket() {
     const ws = new WebSocket(`${WSS}/ws`);
     ws.onopen = () => {
         console.log("🟢 WebSocket Connected!");
         wssState.innerText = "🟢";
         checkEngineStatus();
+        updateStats();
     };
     ws.onclose = () => {
         console.log("🔴 WebSocket Disconnected.");
         wssState.innerText = "🔴";
+        setTimeout(connectWebSocket, 3000);
     };
     ws.onmessage = async (event) => {
         const payload = JSON.parse(event.data);
@@ -139,7 +145,7 @@ document.addEventListener("DOMContentLoaded", () => {
             applyEngineStatus(payload);
         }
     };
-});
+}
 
 async function checkEngineStatus() {
     try {
@@ -226,10 +232,14 @@ async function uploadFile(file, label = "Audio") {
     try {
         const response = await fetch(`${BASE}/api`, {
             method: "POST",
+            headers: { "X-Internal-UI": "1" },
             body: formData
         });
 
-        if (!response.ok) throw new Error(`Server responded with ${response.status}`);
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `Server responded with ${response.status}`);
+        }
 
         const data = await response.json();
         const taskId = data.task_id || data.id;
@@ -238,7 +248,7 @@ async function uploadFile(file, label = "Audio") {
         }
         
     } catch (err) {
-        statusEl.innerText = "Upload failed!";
+        alert(`Upload failed: ${err.message}`);
         console.error(err);
     }
 }
@@ -325,8 +335,9 @@ async function loadHistory() {
                 <h3 class="title-el" style="color: green;">
                     ✔ ${truncateMiddle(item.label, 30)} [${formatTime(item.duration)}]
                 </h3>
-                <pre class="result-el">${item.final_text}</pre>
+                <pre class="result-el"></pre>
             `;
+            taskDiv.querySelector(".result-el").innerText = item.final_text;
             container.prepend(taskDiv); 
         }
     } catch (err) {
