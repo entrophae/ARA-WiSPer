@@ -121,8 +121,20 @@ def run_transcription(task_id, audio_np, is_temp_file=False):
             "duration": info.duration,
             "final_text": final_text,
         })
+        state.event_queue.append({
+            "type": "task_done",
+            "task_id": task_id,
+            "status": "done",
+            "final_text": final_text,
+        })
     except Exception as e:
         state.tasks[task_id].update({"status": "error", "error": str(e)})
+        state.event_queue.append({
+            "type": "task_error",
+            "task_id": task_id,
+            "status": "error",
+            "error": str(e),
+        })
         print(f"\n❌ FATAL ERROR IN TRANSCRIPTION THREAD (Task: {task_id}) ❌")
         traceback.print_exc() 
         print("-" * 50 + "\n")

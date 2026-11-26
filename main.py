@@ -70,6 +70,17 @@ async def broadcast_worker():
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     state.active_websockets.append(websocket)
+
+    initial_status = {
+        "type": "model_status",
+        "status": engine.model_status,
+        "model": engine.model_name,
+        "processor": engine.processor,
+    }
+    if engine.model_error:
+        initial_status["error"] = engine.model_error
+    await websocket.send_json(initial_status)
+
     try:
         while True:
             await websocket.receive_text()
