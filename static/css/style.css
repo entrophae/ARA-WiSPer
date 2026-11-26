@@ -22,6 +22,18 @@ button.inactive {
     gap: 10px;
 } 
 
+.info {
+    display: block
+}
+
+.info p {
+    margin-top: 0;
+}
+
+.info p:last-of-type {
+    margin-bottom: 0;
+}
+
 input[type="file"] {
     display: none;
 }
@@ -53,6 +65,7 @@ input[type="file"] {
 #transcribe { background-color: #04AA6D; border-radius: 12px; }
 #transcribe:disabled { filter: saturate(33%); cursor: not-allowed; }
 #start { background-color: #04AA6D; border-radius: 12px; }
+#start:disabled { filter: saturate(33%); cursor: not-allowed; }
 #stop { background-color: #f44336; border-radius: 12px; }
 
 /* --- UNIFIED CARD UI STYLES --- */

@@ -8,8 +8,17 @@
 </head>
 <body>
     <div id="app">
-        
+
         <div id="optionsPanel">
+            <div class="card">
+                <h3 id="engineCardTitle">
+                    Stt Engine <span id="engineState" title="">⚫</span>
+                </h3>
+                <div id="engineInfo" class="info">
+                    <p>Model: <span id="engineName">---</span></p>
+                    <p>Processor: <span id="engineProcessor">---</span></p>
+                </div>
+            </div>
             <div class="card">
                 <h3 id="apiCardTitle">
                     REST API (POST)<br>(Connections: <span title ="" id="connCount">0</span> | Requests: <span id="reqCount">0</span>)

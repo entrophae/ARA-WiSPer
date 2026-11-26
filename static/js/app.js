@@ -4,7 +4,7 @@ const WSS = HREF.replace(/^http/, "ws");
 
 let mediaRecorder;
 let audioChunks = [];
-let fileInput, fileDisplay, fileSendBtn, start, stopBtn, apiUrlInput, copyApiBtn, connectionsNr, requestsNr, apiCardTitle, wssUrlInput, copyWssBtn, wconnectionsNr, wrequestsNr, wssState, wssCardTitle;
+let fileInput, fileDisplay, fileSendBtn, startBtn, stopBtn, apiUrlInput, copyApiBtn, connectionsNr, requestsNr, apiCardTitle, wssUrlInput, copyWssBtn, wconnectionsNr, wrequestsNr, wssState, wssCardTitle, engineState, engineName, engineProcessor;
 
 document.addEventListener("DOMContentLoaded", () => {
     fileInput = document.getElementById("audioFile");
@@ -23,6 +23,9 @@ document.addEventListener("DOMContentLoaded", () => {
     wrequestsNr = document.getElementById("wreqCount");
     wssState = document.getElementById("wssState");
     wssCardTitle = document.getElementById("wssCardTitle");
+    engineState = document.getElementById("engineState");
+    engineName = document.getElementById("engineName");
+    engineProcessor = document.getElementById("engineProcessor");
 
     if (apiUrlInput && copyApiBtn) {
         const fullApiUrl = `${HREF}/api`;
@@ -57,22 +60,24 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     fileSendBtn.disabled = true;
+    startBtn.disabled = true;
     setRecordingState(false);
+    checkEngineStatus();
     updateStats();
-    loadHistory();;
+    loadHistory();
 
     fileInput.addEventListener("change", () => {
-        fileSendBtn.disabled = !fileInput.files.length;
+        fileSendBtn.disabled = !fileInput.files.length || !isModelReady;
         if (fileInput.files.length > 0) {
             const file = fileInput.files[0];
             const name = file.name;
-            const size = formatBytes(file.size); 
-            
+            const size = formatBytes(file.size);
+
             let typeStr = "Unknown Type";
             if (file.type) {
                 typeStr = `${file.type.split("/")[0]}: ${file.type.split("/")[1]}`;
             }
-            
+
             fileDisplay.innerText = `${name}\n${size} (${typeStr})`;
         } else {
             fileDisplay.innerText = "No file selected";
@@ -112,15 +117,16 @@ document.addEventListener("DOMContentLoaded", () => {
     ws.onopen = () => {
         console.log("🟢 WebSocket Connected!");
         wssState.innerText = "🟢";
-    }
+        checkEngineStatus();
+    };
     ws.onclose = () => {
-        console.log("🔴 WebSocket Disconnected.")
+        console.log("🔴 WebSocket Disconnected.");
         wssState.innerText = "🔴";
-    }
+    };
     ws.onmessage = async (event) => {
         const payload = JSON.parse(event.data);
         console.log("📥 Received live event from server:", payload);
-        
+
         if (payload.type === "new_task") {
             const safeId = payload.task_id || payload.id;
             const safeLabel = payload.label || "Audio Task";
@@ -129,8 +135,47 @@ document.addEventListener("DOMContentLoaded", () => {
         else if (payload.type === "stats_update") {
             await updateStats(payload);
         }
+        else if (payload.type === "model_status") {
+            applyEngineStatus(payload);
+        }
     };
 });
+
+async function checkEngineStatus() {
+    try {
+        const res = await fetch(`${BASE}/status`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        applyEngineStatus(data);
+    } catch (err) {
+        console.error("Could not fetch engine status", err);
+    }
+}
+
+function applyEngineStatus(data) {
+    const status = data.status;
+    isModelReady = status === "online";
+
+    if (startBtn) startBtn.disabled = !isModelReady;
+    if (fileSendBtn && fileInput) {
+        fileSendBtn.disabled = !isModelReady || !fileInput.files.length;
+    }
+
+    if (engineName) engineName.innerText = data.model || "---";
+    if (engineProcessor) engineProcessor.innerText = data.processor || "---";
+
+    if (!engineState) return;
+    if (status === "online") {
+        engineState.innerText = "🟢";
+        engineState.title = "STT Engine Online";
+    } else if (status === "loading") {
+        engineState.innerText = "🟡";
+        engineState.title = "Loading Whisper model...";
+    } else {
+        engineState.innerText = "🔴";
+        engineState.title = data.error ? `Error: ${data.error}` : "STT Engine Offline";
+    }
+}
 
 async function updateStats(data = null) {
     try {
