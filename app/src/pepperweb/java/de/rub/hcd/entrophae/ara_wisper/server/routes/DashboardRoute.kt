@@ -209,13 +209,13 @@ private suspend fun DefaultWebSocketServerSession.sendInitialApiKeys() {
     val dataObj = SettingsAdapter.readAllAsJson()
 
     val schemaObj = JSONObject().apply {
+        put("speech",ApiDataTemplate.Speech.toUiSchema())
         put("models", ApiDataTemplate.Models.toUiSchema())
         put("database", ApiDataTemplate.Database.toUiSchema())
-        put("speech",ApiDataTemplate.Speech.toUiSchema())
         put("tools", ApiDataTemplate.Tools.toUiSchema())
-        put("system", ApiDataTemplate.System.toUiSchema())
-        put("providers", ApiDataTemplate.Providers.toUiSchema())
-        put("azure", ApiDataTemplate.Azure.toUiSchema())
+        // put("system", ApiDataTemplate.System.toUiSchema())
+        // put("providers", ApiDataTemplate.Providers.toUiSchema())
+        // put("azure", ApiDataTemplate.Azure.toUiSchema())
         put("appSettings", ApiDataTemplate.buildAppDynamicSchema(AraWisperManager.appContext))
     }
 
