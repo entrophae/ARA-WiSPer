@@ -188,7 +188,7 @@ class ToolInterceptor {
         } else {
             """
                 - Nutze die obigen Tool-Ergebnisse (und falls vorhanden das angehängte Bild). Wiederhole KEINE bereits erledigte Suche.
-                - Wenn noch eine weitere Teilaufgabe aus der ursprünglichen Anfrage ein anderes Tool erfordert (z. B. play_melody), beantworte zuerst die bereits vorliegenden Such-/Bild-Ergebnisse im Text (ohne bereits laut gesagten Text zu wiederholen) und rufe das nächste Tool **im selben Schritt** über einen Tool-Call auf.
+                - Wenn noch eine weitere Teilaufgabe aus der ursprünglichen Anfrage ein anderes Tool erfordert (z. B. <nächstes_tool>), beantworte zuerst die bereits vorliegenden Such-/Bild-Ergebnisse im Text (ohne bereits laut gesagten Text zu wiederholen) und rufe das nächste Tool **im selben Schritt** über einen Tool-Call auf.
                 - WICHTIG zu „Bereits laut gesagter Text in diesem Zug“: Wiederhole diese Fakten (z. B. die Anzahl der Finger) NICHT noch einmal! Gib nur noch die fehlenden Informationen aus.
                 - WICHTIG zu Aktions-Tools (wie play_melody oder play_animation): Wenn ein solches Tool oben als BEREITS ERLEDIGT steht, wurde die Melodie/Animation GERADE EBEN SCHON abgespielt. Sage auf keinen Fall „Ich spiele dir jetzt eine Melodie“ oder Ähnliches im Präsens/Futur — nutze höchstens die Vergangenheitsform (z. B. „Ich hoffe, die Melodie hat dir gefallen!“).
             """.trimIndent()

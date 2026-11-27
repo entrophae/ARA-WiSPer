@@ -90,7 +90,8 @@ object DashboardManager {
     }
 
     suspend fun syncHistoryToBrowser(userId: String) {
-        val history = DataBaseClient.getUserHistory(userId)
+        val knowledge = DataBaseClient.getUserKnowledge(userId)
+        val history = knowledge.history
 
         val historyArray = JSONArray()
         for (turn in history) {
@@ -125,6 +126,7 @@ object DashboardManager {
         val syncPacket = JSONObject().apply {
             put(ProxySettingsRepository.Logging.Keys.TYPE, ProxySettingsRepository.Dashboard.Events.CHAT_SYNC)
             put("userId", userId)
+            put("chatSummary", knowledge.chatSummary)
             put("history", historyArray)
         }
 

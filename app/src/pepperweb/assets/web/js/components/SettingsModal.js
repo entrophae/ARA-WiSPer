@@ -479,6 +479,7 @@ const SettingsModal = {
                                 placeholder="e.g. You are a helpful assistant."
                                 v-model="apiData.systemPrompt"
                             />
+                            <!-- COMMENTED OUT: Unused App Controls
                             <div class="input-wrapper">
                                 <label class="input-label">Model</label>
                                 <select v-model="apiData.model">
@@ -514,11 +515,12 @@ const SettingsModal = {
                                 :options="appSchema.audioInputModes || []"
                                 v-model="apiData.audioInputMode"
                             />
+                            -->
                         </settings-group>
 
                         <!-- 2. PROVIDER SPECIFIC SETTINGS -->
+                        <!-- COMMENTED OUT: Unused Provider Specific Settings
                         <settings-group title="Voice & Realtime Settings">
-                            <!-- Azure Settings -->
                             <template v-if="!isRealtimeMode">
                                 <h3>Azure Speech Settings</h3>
                                 <div class="input-wrapper">
@@ -543,7 +545,6 @@ const SettingsModal = {
                                 />
                             </template>
 
-                            <!-- Google Live API Settings -->
                             <template v-else-if="isGoogle">
                                 <h3>Google Live API Settings</h3>
                                 <setting-segmented-button
@@ -586,7 +587,6 @@ const SettingsModal = {
                                 />
                             </template>
 
-                            <!-- xAI Voice Settings -->
                             <template v-else-if="isXai">
                                 <h3>x.ai Voice Agent Settings</h3>
                                 <setting-slider
@@ -609,7 +609,6 @@ const SettingsModal = {
                                 />
                             </template>
 
-                            <!-- OpenAI Realtime Settings -->
                             <template v-else>
                                 <h3>Voice API Settings</h3>
                                 <div class="input-wrapper">
@@ -631,20 +630,9 @@ const SettingsModal = {
                                 </template>
                             </template>
                         </settings-group>
+                        -->
 
-                        <!-- 3. FUNCTION CALLING & TOOLS -->
-                        <settings-group title="Function Calls">
-                            <setting-tools-section
-                                :availableTools="appSchema.availableTools || []"
-                                v-model:enabledTools="apiData.enabledTools"
-                                v-model:googleSearch="apiData.googleSearchGrounding"
-                                v-model:xaiWebSearch="apiData.xaiWebSearch"
-                                v-model:xaiXSearch="apiData.xaiXSearch"
-                                :isGoogle="isGoogle"
-                                :isXai="isXai"
-                            />
-                        </settings-group>
-
+                        <!-- 3. AraWiSPer Specific Settings -->
                         <settings-group
                             v-for="(fields, categoryKey) in proxySchema"
                             :key="categoryKey"
@@ -683,6 +671,19 @@ const SettingsModal = {
                                 />
 
                             </template>
+                        </settings-group>
+
+                        <!-- 4. FUNCTION CALLING & TOOLS -->
+                        <settings-group title="Function Calls">
+                            <setting-tools-section
+                                :availableTools="appSchema.availableTools || []"
+                                v-model:enabledTools="apiData.enabledTools"
+                                v-model:googleSearch="apiData.googleSearchGrounding"
+                                v-model:xaiWebSearch="apiData.xaiWebSearch"
+                                v-model:xaiXSearch="apiData.xaiXSearch"
+                                :isGoogle="isGoogle"
+                                :isXai="isXai"
+                            />
                         </settings-group>
                     </div>
                 </div>

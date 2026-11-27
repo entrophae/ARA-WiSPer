@@ -40,7 +40,7 @@ const appStore = reactive({
         CUSTOM_EMBEDDING_KEY: '', CUSTOM_EMBEDDING_CONFIG: '{}', CUSTOM_STT_ENDPOINT: '',
         CUSTOM_STT_KEY: '', CUSTOM_VAD_MODEL: '', SYSTEM_AUDIO_MODE: '',
         SYSTEM_ROUTING_MODE: '', PERSON_DB_API_ENDPOINT: '', PERSON_DB_KEY: '',
-        FACT_DB_API_ENDPOINT: '', FACT_DB_KEY: ''
+        FACT_DB_API_ENDPOINT: '', FACT_DB_KEY: '', AUTO_SUMMARY_INTERVAL: '25'
     },
 
     // --- ACTIONS: UI UTILS ---
@@ -183,9 +183,12 @@ const appStore = reactive({
                     });
                     if (this.proxyLogs.length > 10) this.proxyLogs.shift();
                 }
-                else if (payload.type === this.constants.MSG_SYNC_LOCAL) {
+                else if (payload.type === this.constants.MSG_CHAT_SYNC) {
                     if (payload.userId === this.activeUserId) {
                         this.userChatHistory = payload.history || [];
+                        if (typeof payload.chatSummary === 'string') {
+                            this.userSummary = payload.chatSummary;
+                        }
                         this.rebuildTerminalLogs();
                     }
                 }
@@ -455,6 +458,19 @@ const appStore = reactive({
             this.logMessage(`Saved knowledge for ${userId}.`, 'log-system');
         } else {
             this.logMessage('ERROR: Cannot save knowledge. Robot is disconnected!', 'log-error');
+        }
+    },
+
+    generateUserSummary(userId) {
+        const success = ApiService.sendSocketMessage(this.socket, {
+            type: this.constants.MSG_GENERATE_USER_SUMMARY,
+            userId
+        });
+
+        if (success) {
+            this.logMessage(`Generating chat summary for ${userId}.`, 'log-system');
+        } else {
+            this.logMessage('ERROR: Cannot generate chat summary. Robot is disconnected!', 'log-error');
         }
     }
 });

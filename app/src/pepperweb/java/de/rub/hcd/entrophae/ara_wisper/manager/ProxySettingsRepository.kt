@@ -181,6 +181,10 @@ object ProxySettingsRepository {
         }
     }
 
+    var auto_summary_interval: Int
+        get() = (getPref(Settings.AUTO_SUMMARY_INTERVAL, "25").trim().toIntOrNull() ?: 25).coerceAtLeast(1)
+        set(value) = setPref(Settings.AUTO_SUMMARY_INTERVAL, value.coerceAtLeast(1).toString())
+
     var activeUserId: String = "default_user"
 
     const val port = 8080
@@ -269,6 +273,7 @@ object ProxySettingsRepository {
         const val AZURE_SPEECH_REGION = "AZURE_SPEECH_REGION"
 
         const val MIC_STATUS = "MIC_STATUS"
+        const val AUTO_SUMMARY_INTERVAL = "AUTO_SUMMARY_INTERVAL"
     }
 
     object Dashboard {
@@ -288,6 +293,7 @@ object ProxySettingsRepository {
             const val SET_USER = "SET_USER"
             const val DELETE_USER = "DELETE_USER"
             const val UPDATE_USER_KNOWLEDGE = "UPDATE_USER_KNOWLEDGE"
+            const val GENERATE_USER_SUMMARY = "GENERATE_USER_SUMMARY"
             const val CLEAR_HISTORY = "CLEAR_HISTORY"
         }
     }

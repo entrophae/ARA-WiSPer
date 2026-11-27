@@ -34,54 +34,60 @@ const ExperimentManagerModal = {
                     <!-- Create New Experiment -->
                     <div class="settings-group">
                         <h3>Create New</h3>
-                        <div class="input-wrapper" style="flex-direction: row; gap: 10px;">
-                            <input type="text" v-model="newExpName" placeholder="New Experiment Name" @keyup.enter="handleCreate" style="flex: 1;">
-                            <button @click="handleCreate" style="width: auto;">Create Experiment</button>
+                        <div class="input-wrapper">
+                            <input type="text" v-model="newExpName" placeholder="New Experiment Name" @keyup.enter="handleCreate">
+                            <button @click="handleCreate">Create Experiment</button>
                         </div>
                     </div>
 
                     <!-- Existing Experiments -->
-                    <div class="settings-group" v-for="exp in experiments" :key="exp.id" style="border: 1px solid #333; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                        <h3 style="display: flex; justify-content: space-between; align-items: center; margin-top: 0;">
-                            <span>{{ exp.name }} <span style="font-size: 0.8em; color: #888;">({{ exp.id }})</span></span>
+                    <div class="settings-group bordered-card" v-for="exp in experiments" :key="exp.id">
+                        <div class="turn-header">
+                            <h3 class="exp-card-title">
+                                {{ exp.name }} <span class="text-muted">({{ exp.id }})</span>
+                            </h3>
                             <button @click="deleteExperiment(exp.id)" class="btn-icon delete-btn" title="Delete Experiment">🗑️</button>
-                        </h3>
+                        </div>
 
                         <!-- 1. Assigned Users -->
-                        <div class="input-wrapper" style="margin-bottom: 15px;">
+                        <div class="input-wrapper stack">
                             <label class="input-label">Assigned Users</label>
-                            <div style="margin-bottom: 10px;">
-                                <span v-if="!exp.users || exp.users.length === 0" style="color: #666; font-size: 0.9em;">No users assigned</span>
-                                <span v-for="u in exp.users" :key="u" class="pipeline-badge blue" style="margin-right: 5px;">
-                                    {{ u }} <span @click="handleUnassign(exp.id, u)" style="cursor:pointer; color:#ff6b6b; margin-left: 4px;">&times;</span>
+                            <div class="gapped-flexrow">
+                                <span v-if="!exp.users || exp.users.length === 0" class="text-muted">No users assigned</span>
+                                <span v-for="u in exp.users" :key="u" class="pipeline-badge blue">
+                                    {{ u }} <span @click="handleUnassign(exp.id, u)" class="badge-remove">&times;</span>
                                 </span>
                             </div>
-                            <div style="display: flex; gap: 10px;">
-                                <select v-model="selectedUsers[exp.id]" style="flex: 1;">
+                            <div class="input-wrapper">
+                                <select v-model="selectedUsers[exp.id]">
                                     <option disabled value="">Assign a user...</option>
                                     <option v-for="user in allUsers" :key="user" :value="user" :disabled="exp.users && exp.users.includes(user)">{{ user }}</option>
                                 </select>
-                                <button class="btn-secondary" @click="handleAssign(exp.id)" style="width: auto;">Assign</button>
+                                <button class="btn-secondary" @click="handleAssign(exp.id)">Assign</button>
                             </div>
                         </div>
 
                         <!-- 2. Sequence Configuration (Experiment Builder) -->
-                        <div class="input-wrapper" style="margin-bottom: 15px;">
+                        <div class="input-wrapper">
                             <label class="input-label">Sequence Configuration</label>
 
-                            <!-- Toggle Button -->
+                            <button type="button" disabled class="btn-secondary btn-block btn-split">
+                                <span>⚙️ Sequence Builder</span>
+                                <span class="pipeline-badge yellow">Not yet implemented</span>
+                            </button>
+
+                             <!-- Toggle Button (Commented out: not yet implemented) -->
                             <button
-                                v-if="editingSequenceExpId !== exp.id"
+                                v-if="false && editingSequenceExpId !== exp.id"
                                 @click="editingSequenceExpId = exp.id"
-                                class="btn-secondary"
-                                style="width: 100%; text-align: left;"
+                                class="btn-secondary btn-block btn-split"
                             >
                                 ⚙️ Edit Sequence Data ({{ exp.config && exp.config.sequence ? Object.keys(exp.config.sequence).length : 0 }} Steps)
                             </button>
 
-                            <!-- Inline Builder Component -->
+                            <!-- Inline Builder Component (Deactivated) -->
                             <experiment-builder
-                                v-if="editingSequenceExpId === exp.id"
+                                v-if="false && editingSequenceExpId === exp.id"
                                 :initial-config="exp.config"
                                 @save="handleSaveConfig(exp.id, $event)"
                                 @close="editingSequenceExpId = null"
@@ -89,35 +95,35 @@ const ExperimentManagerModal = {
                         </div>
 
                         <!-- 3. Ingested Documents -->
-                        <div class="input-wrapper">
+                        <div class="input-wrapper stack">
                             <label class="input-label">Ingested Documents</label>
 
-                            <ul v-if="exp.files && exp.files.length > 0" style="list-style: none; padding: 0; margin-bottom: 10px;">
-                                <li v-for="file in exp.files" :key="file.id" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; margin-bottom: 5px; border-radius: 4px;">
+                            <ul v-if="exp.files && exp.files.length > 0" class="file-list">
+                                <li v-for="file in exp.files" :key="file.id" class="file-list-item">
                                     <span>{{ file.name }}</span>
-                                    <div style="display: flex; gap: 5px;">
+                                    <div class="gapped-flexrow">
                                         <button @click="viewFileContent(exp.id, file.name)" class="btn-secondary btn-sm" title="View Text Content">Txt</button>
                                         <button @click="viewRawFile(exp.id, file.name)" class="btn-secondary btn-sm" title="Preview Original File">🔍</button>
                                         <button @click="deleteFile(exp.id, file.name)" class="btn-danger btn-sm">X</button>
                                     </div>
                                 </li>
                             </ul>
-                            <span v-else style="color: #666; font-size: 0.9em; display: block; margin-bottom: 10px;">No files ingested yet.</span>
+                            <span v-else class="text-muted">No files ingested yet.</span>
 
-                            <ul v-if="hasUploadingFiles(exp.id)" style="list-style: none; padding: 0; margin-bottom: 10px;">
+                            <ul v-if="hasUploadingFiles(exp.id)" class="file-list">
                                 <template v-for="(statusMsg, uploadKey) in uploadingFiles" :key="uploadKey">
-                                    <li v-if="uploadKey.startsWith(exp.id + '_')" style="padding: 8px 10px; margin-bottom: 5px; border-radius: 4px;">
+                                    <li v-if="uploadKey.startsWith(exp.id + '_')" class="file-list-item">
                                         <span>{{ uploadKey.substring(uploadKey.indexOf('_') + 1) }}</span>
-                                        <span class="pipeline-badge yellow" style="font-size: 0.8em; float: right;">
+                                        <span class="pipeline-badge yellow">
                                             <span class="spinner">⏳</span> {{ statusMsg }}
                                         </span>
                                     </li>
                                 </template>
                             </ul>
 
-                            <div style="display: flex; gap: 10px;">
-                                <input type="file" :ref="'file_' + exp.id" style="flex: 1;">
-                                <button class="btn-secondary" @click="handleUpload(exp.id)" style="width: auto;">Upload & Embed</button>
+                            <div class="input-wrapper">
+                                <input type="file" :ref="'file_' + exp.id">
+                                <button class="btn-secondary" @click="handleUpload(exp.id)">Upload & Embed</button>
                             </div>
                         </div>
                     </div>
@@ -126,29 +132,28 @@ const ExperimentManagerModal = {
                     <button @click="$emit('close')" class="btn-secondary">Close</button>
                 </div>
             </div>
-            <!-- File Preview Backdrop overlay -->
-            <div v-if="viewingContent !== null || viewingFileUrl !== null" class="modal-backdrop" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 1050;">
-                <div class="modal-content panel" style="padding: 20px; width: 80vw; max-width: 900px; max-height: 85vh; display: flex; flex-direction: column; align-items: center;">
-                    <h3 style="color: #111;">{{ viewingContent !== null ? 'Content' : 'File Preview' }}: {{ viewingFilename }}</h3>
 
-                    <div style="margin: 15px 0; width: 100%; flex: 1; display: flex; justify-content: center; overflow-y: auto; min-height: 0;">
-                        <!-- Text Content -->
-                        <pre v-if="viewingContent !== null" style="white-space: pre-wrap; word-break: break-word; color: #333; padding: 15px; border-radius: 4px; width: 100%;">{{ viewingContent }}</pre>
+            <!-- File Preview Modal -->
+            <div v-if="viewingContent !== null || viewingFileUrl !== null" class="modal modal-stacked">
+                <div class="modal-content panel preview-modal">
+                    <h3 class="modal-title">{{ viewingContent !== null ? 'Content' : 'File Preview' }}: {{ viewingFilename }}</h3>
 
-                        <!-- Media/File Preview -->
+                    <div class="preview-body">
+                        <pre v-if="viewingContent !== null" class="preview-text">{{ viewingContent }}</pre>
+
                         <template v-else>
-                            <img v-if="isImage" :src="viewingFileUrl" :alt="viewingFilename" style="max-width: 100%; max-height: 60vh; object-fit: contain; border: 1px solid #ddd; border-radius: 4px;">
-                            <iframe v-else-if="isPdf" :src="viewingFileUrl" style="width: 100%; height: 60vh; border: 1px solid #ddd; border-radius: 4px;"></iframe>
-                            <div v-else style="padding: 40px; text-align: center; color: #333; width: 100%; border-radius: 4px;">
+                            <img v-if="isImage" :src="viewingFileUrl" :alt="viewingFilename" class="preview-image">
+                            <iframe v-else-if="isPdf" :src="viewingFileUrl" class="preview-frame"></iframe>
+                            <div v-else class="preview-fallback">
                                 <p>Direct preview not available for <strong>.{{ fileExtension }}</strong> files.</p>
-                                <a :href="viewingFileUrl" download class="btn-secondary" style="text-decoration: none; display: inline-block; padding: 8px 16px; margin-top: 10px; color: #333;">Download File</a>
+                                <a :href="viewingFileUrl" download class="btn-link btn-secondary">Download File</a>
                             </div>
                         </template>
                     </div>
 
-                    <div style="display: flex; gap: 10px; margin-top: 10px;">
-                        <a v-if="viewingFileUrl" :href="viewingFileUrl" target="_blank"><button class="btn-secondary" style="color: #333; border-color: #ccc;">Open in New Tab</button></a>
-                        <button @click="closeModal" class="btn-secondary" style="color: #333; border-color: #ccc;">Close Preview</button>
+                    <div class="modal-actions">
+                        <a v-if="viewingFileUrl" :href="viewingFileUrl" target="_blank" class="btn-link btn-secondary">Open in New Tab</a>
+                        <button @click="closeModal" class="btn-secondary">Close Preview</button>
                     </div>
                 </div>
             </div>

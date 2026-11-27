@@ -424,6 +424,11 @@ class ProxyPipelineManager(
     }
 
     private suspend fun speakThinkingText(text: String, pipelineContext: PipelineContext) {
+        pipelineContext.turn.toolBufferResponse = listOfNotNull(
+            pipelineContext.turn.toolBufferResponse?.takeIf { it.isNotBlank() },
+            text.trim()
+        ).joinToString(" ")
+
         pipelineContext.bridge.onAssistantOutputChunk(
             text = text,
             isThinkingText = true,
@@ -463,8 +468,18 @@ class ProxyPipelineManager(
         )
 
         if (!waitingForTool && !cancelled) {
-            pipelineContext.turn.persist()
-            logTurnState("Finished", pipelineContext.turn)
+            val turn = pipelineContext.turn
+            turn.persist()
+            logTurnState("Finished", turn)
+
+            if (!turn.isSystemEvent && turn.userQuery.isNotBlank()) {
+                serverScope.launch(Dispatchers.IO) {
+                    LlmClient.summarizeUserKnowledge(
+                        userId = turn.userId,
+                        autoTrigger = true
+                    )
+                }
+            }
         }
     }
 

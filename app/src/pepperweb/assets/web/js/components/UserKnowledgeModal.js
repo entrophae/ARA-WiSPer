@@ -6,6 +6,7 @@ const UserKnowledgeModal = {
     data() {
         return {
             editUserSummary: this.initialSummary || '',
+            isGeneratingSummary: false,
             // Deep copy the history array so we can edit it visually
             editHistory: this.normalizeHistory(this.initialHistory),
             deletedTurnIds: []
@@ -21,22 +22,31 @@ const UserKnowledgeModal = {
         },
         initialSummary(newSummary) {
             this.editUserSummary = newSummary || '';
+            this.isGeneratingSummary = false;
         }
     },
     template: `
-         <div class="modal">
+        <div class="modal">
             <div class="modal-content panel">
                 <span class="close-btn" @click="$emit('close')">&times;</span>
                 <h2 class="modal-title">
                     Edit Knowledge: {{ userId }}
                     <button class="btn-icon delete-btn" @click="deleteUser(userId)" title="Delete User">Delete User</button>
-                    <button class="btn-icon delete-btn" @click="clearHistory(userId)" title="Clear History">Clear History️</button>
+                    <button class="btn-icon delete-btn" @click="clearHistory(userId)" title="Clear History">Clear History</button>
                 </h2>
 
 
                 <div class="settings-grid">
                     <settings-group title="Chat Summary">
                         <textarea v-model="editUserSummary" class="textarea-full"></textarea>
+                        <button
+                            type="button"
+                            class="btn-secondary btn-sm"
+                            :disabled="isGeneratingSummary || editHistory.length === 0"
+                            @click="createSummary"
+                        >
+                            {{ isGeneratingSummary ? '⏳ Generating...' : 'Create Summary' }}
+                        </button>
                     </settings-group>
 
                     <settings-group title="Chat History">
@@ -81,7 +91,7 @@ const UserKnowledgeModal = {
                     </settings-group>
                 </div>
 
-                <div class="modal-actions" style="margin-top: 20px;">
+                <div class="modal-actions">
                     <button class="btn-secondary" @click="$emit('close')">Cancel</button>
                     <button @click="saveChanges">Save Changes</button>
                 </div>
@@ -147,6 +157,29 @@ const UserKnowledgeModal = {
                 const container = this.$el.querySelector('.history-editor');
                 if(container) container.scrollTop = container.scrollHeight;
             }, 50);
+        },
+        createSummary() {
+            if (this.isGeneratingSummary) return;
+            this.isGeneratingSummary = true;
+
+            // Save any unsaved turn edits/deletions first so the backend summarizes current turns
+            const modifiedTurns = this.editHistory.filter(currentTurn => {
+                if (currentTurn.turnId.startsWith('manual_')) return true;
+                const originalTurn = this.initialHistory.find(t => t.turnId === currentTurn.turnId);
+                if (!originalTurn) return true;
+                return originalTurn.userQuery !== currentTurn.userQuery ||
+                    originalTurn.userImageUrl !== currentTurn.userImageUrl ||
+                    originalTurn.llmResponse !== currentTurn.llmResponse ||
+                    originalTurn.toolBufferResponse !== currentTurn.toolBufferResponse ||
+                    JSON.stringify(originalTurn.toolsUsed) !== JSON.stringify(currentTurn.toolsUsed);
+            });
+
+            if (modifiedTurns.length > 0 || this.deletedTurnIds.length > 0) {
+                appStore.saveUserKnowledge(this.userId, this.editUserSummary, modifiedTurns, this.deletedTurnIds);
+            }
+
+            appStore.generateUserSummary(this.userId);
+            setTimeout(() => { this.isGeneratingSummary = false; }, 30000);
         },
         saveChanges() {
             // Filter out empty turns before saving
