@@ -59,10 +59,10 @@ const appStore = reactive({
     toggleLLMMode() {
         const success = ApiService.sendSocketMessage(this.socket, {
             type: this.constants.MSG_TOGGLE_LLM_MODE,
-            data: true
+            data: !this.isLLMMode
         });
-        if (success) {
-            this.isLLMMode = !this.isLLMMode
+        if (!success) {
+            this.logMessage('ERROR: Cannot toggle LLM mode. Robot is disconnected!', 'log-error');
         }
     },
     toggleVideoStream() {
@@ -141,7 +141,15 @@ const appStore = reactive({
                 if (payload.type === this.constants.MSG_LOAD_API_KEYS) {
                     this.apiData = { ...this.apiData, ...payload.data };
                     this.apiSchema = payload.schema;
+                    if (typeof payload.isLLMMode === 'boolean') {
+                        this.isLLMMode = payload.isLLMMode;
+                    }
                     this.logMessage('Loaded configuration from server.', 'log-system');
+                }
+                else if (payload.type === this.constants.MSG_STATUS_UPDATE) {
+                    if (typeof payload.isLLMMode === 'boolean') {
+                        this.isLLMMode = payload.isLLMMode;
+                    }
                 }
                 else if (payload.type === this.constants.MSG_CHAT_UPDATE) {
                     payload.data.forEach(msg => {
