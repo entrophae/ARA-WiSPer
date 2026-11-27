@@ -284,7 +284,7 @@ input[type="text"], input[type="password"], input[type="url"], input[type="numbe
     color: var(--text-main);
     line-height: 1.5;
 }
-textarea.textarea-full:not(.turn-textarea) { min-height: 250px; }
+textarea.textarea-full:not(.turn-textarea,.tool-detail-item-text) { min-height: 250px; }
 
 /* Buttons */
 button {

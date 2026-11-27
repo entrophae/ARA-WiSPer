@@ -424,6 +424,11 @@ class ProxyPipelineManager(
     }
 
     private suspend fun speakThinkingText(text: String, pipelineContext: PipelineContext) {
+        pipelineContext.turn.toolBufferResponse = listOfNotNull(
+            pipelineContext.turn.toolBufferResponse?.takeIf { it.isNotBlank() },
+            text.trim()
+        ).joinToString(" ")
+
         pipelineContext.bridge.onAssistantOutputChunk(
             text = text,
             isThinkingText = true,
