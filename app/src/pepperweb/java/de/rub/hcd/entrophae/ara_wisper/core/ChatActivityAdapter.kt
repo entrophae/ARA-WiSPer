@@ -6,6 +6,8 @@ import ch.fhnw.pepper_realtime.manager.TurnManager
 import ch.fhnw.pepper_realtime.ui.ChatActivity
 import ch.fhnw.pepper_realtime.ui.settings.SettingsViewModel
 import de.rub.hcd.entrophae.ara_wisper.manager.AraWisperManager
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Lifecycle-safe facade wrapping the host `ChatActivity` instance.
@@ -76,8 +78,13 @@ class ChatActivityAdapter(activity: ChatActivity) {
 
     fun restartSession() {
         activity?.runOnUiThread {
-            viewModel.startNewSession()
-            settingsViewModel.consumeRestartSessionEvent()
+            applicationScope.launch(ioDispatcher) {
+                val muteState = audioInputController?.isMuted ?: false
+                toggleMicrophone(false)
+                viewModel.startNewSession()
+                delay(900)
+                toggleMicrophone(!muteState)
+            }
         }
     }
 

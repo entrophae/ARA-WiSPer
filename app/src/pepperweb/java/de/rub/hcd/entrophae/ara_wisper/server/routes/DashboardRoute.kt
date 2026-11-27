@@ -66,6 +66,17 @@ fun Route.dashboardRouting(viewModel: ChatViewModel) {
                 sendJsonToClient(payload)
             }
         }
+        val llmModeJob = launch {
+            AraWisperManager.isSessionAllowed.collect { allowed ->
+                val payload = WebSocketPayloads.dashboardPayload(
+                    ProxySettingsRepository.Dashboard.Events.STATUS_UPDATE,
+                    if (allowed) "LLM mode active" else "LLM mode paused"
+                ).apply {
+                    put("isLLMMode", allowed)
+                }
+                sendJsonToClient(payload)
+            }
+        }
 
         try {
             for (frame in incoming) {
@@ -105,6 +116,7 @@ fun Route.dashboardRouting(viewModel: ChatViewModel) {
             statusJob.cancel()
             // chatJob.cancel()
             loggerJob.cancel()
+            llmModeJob.cancel()
             dashboardVideoManager?.stop()
         }
     }
@@ -223,7 +235,10 @@ private suspend fun DefaultWebSocketServerSession.sendInitialApiKeys() {
         ProxySettingsRepository.Dashboard.Events.LOAD_API_KEYS,
         dataObj
     )
-    currentKeys.apply { put("schema", schemaObj) }
+    currentKeys.apply {
+        put("schema", schemaObj)
+        put("isLLMMode", AraWisperManager.isSessionAllowed.value)
+    }
 
     sendJsonToClient(currentKeys)
 }
@@ -349,7 +364,7 @@ private suspend fun processSetUser(json: JSONObject, viewModel: ChatViewModel) {
     ProxySettingsRepository.activeUserId = newUserId
     DataBaseClient.addUser(newUserId)
 
-    viewModel.startNewSession()
+    AraWisperManager.chatActivityAdapter?.restartSession()
     Log.i(ProxySettingsRepository.TAG, "Active User changed to: $newUserId")
     DashboardManager.syncHistoryToBrowser(newUserId)
 }
@@ -360,7 +375,7 @@ private suspend fun processDeleteUser(json: JSONObject, viewModel: ChatViewModel
         val newUserId = "default_user"
         ProxySettingsRepository.activeUserId = newUserId
 
-        viewModel.startNewSession()
+        AraWisperManager.chatActivityAdapter?.restartSession()
         Log.i(ProxySettingsRepository.TAG, "Active User changed to: $newUserId")
         DashboardManager.syncHistoryToBrowser(newUserId)
     }
@@ -369,7 +384,7 @@ private suspend fun processClearHistory(json: JSONObject, viewModel: ChatViewMod
     val userId = json.optString("userId")
     if (userId.isNotEmpty()) {
         DataBaseClient.deleteHistory(userId)
-        viewModel.startNewSession()
+        AraWisperManager.chatActivityAdapter?.restartSession()
         Log.i(ProxySettingsRepository.TAG, "Chat History cleared: $userId")
         DashboardManager.syncHistoryToBrowser(userId)
     }
