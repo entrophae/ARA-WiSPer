@@ -13,6 +13,7 @@ import de.rub.hcd.entrophae.ara_wisper.interceptor.ToolInterceptor
 import de.rub.hcd.entrophae.ara_wisper.manager.ProxySettingsRepository
 import de.rub.hcd.entrophae.ara_wisper.network.authBearer
 import de.rub.hcd.entrophae.ara_wisper.server.data.ChatTurn
+import de.rub.hcd.entrophae.ara_wisper.server.manager.DashboardManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -41,9 +42,21 @@ object LlmClient {
         val apiModel = if (isVisionTask) ProxySettingsRepository.customVlmModel else ProxySettingsRepository.customLlmModel
         val apiKey = if (isVisionTask) ProxySettingsRepository.customVlmKey else ProxySettingsRepository.customLlmKey
 
-        val systemPrompt = ProxySettingsRepository.activeSystemPrompt
+        val userKnowledge = DataBaseClient.getUserKnowledge(currentTurn.userId)
+        val baseSystemPrompt = ProxySettingsRepository.activeSystemPrompt
+        val systemPrompt = if (userKnowledge.chatSummary.isNotBlank()) {
+            """
+            $baseSystemPrompt
+    
+            ## Langzeitgedächtnis / Nutzerprofil (aus bisherigen Sitzungen):
+            ${userKnowledge.chatSummary.trim()}
+            """.trimIndent()
+        } else {
+            baseSystemPrompt
+        }
         val currentTools = ProxySettingsRepository.currentTools
-
+        val restTools = ToolInterceptor.translateToolsToRestFormat(currentTools)
+        val useNativeTools = ProxySettingsRepository.customLlmHasTools && restTools.length() > 0
         val restUrl = "$apiEndpoint/chat/completions"
 
         val messagesArray = JSONArray().apply {
@@ -51,38 +64,21 @@ object LlmClient {
                 put("role", "system")
                 put("content", systemPrompt)
             })
-            val history = DataBaseClient.getUserHistory(currentTurn.userId)
-            for (turn in history) {
-                if (turn.userQuery.isNotBlank()) {
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        if (!turn.userImageUrl.isNullOrBlank()) {
-                            put("content", JSONArray().apply {
-                                put(JSONObject().apply {
-                                    put("type", "text")
-                                    put("text", turn.userQuery)
-                                })
-                                put(JSONObject().apply {
-                                    put("type", "image_url")
-                                    put("image_url", JSONObject().apply {
-                                        put("url", turn.userImageUrl)
-                                    })
-                                })
-                            })
-                        } else {
-                            put("content", turn.userQuery)
-                        }
-                    })
-                }
-                if (turn.llmResponse.isNotBlank()) {
-                    put(JSONObject().apply {
-                        put("role", "assistant")
-                        put("content", turn.llmResponse)
-                    })
-                }
+
+            val recentHistory = userKnowledge.history
+                .filter { it.turnId != currentTurn.turnId }
+                .takeLast(ProxySettingsRepository.auto_summary_interval * 2)
+
+            for (turn in recentHistory) {
+                appendFullTurnToMessages(
+                    messagesArray = this,
+                    turn = turn,
+                    useNativeTools = useNativeTools
+                )
             }
+
+            // Current turn prompt (+ optional vision attachment)
             if (isVisionTask) {
-                Log.i(ProxySettingsRepository.TAG, "Sending image with image=${!currentTurn.userImageUrl.isNullOrBlank()}")
                 put(JSONObject().apply {
                     put("role", "user")
                     put("content", JSONArray().apply {
@@ -105,14 +101,6 @@ object LlmClient {
                 })
             }
         }
-        /*
-        Log.i(
-            ProxySettingsRepository.TAG,
-            "Full LLM Context Payload:\n${messagesArray.toString(2)}"
-        )
-         */
-
-        val restTools = ToolInterceptor.translateToolsToRestFormat(currentTools)
 
         if (!ProxySettingsRepository.customLlmHasTools && restTools.length() > 0) {
             val systemMessage = messagesArray.getJSONObject(0)
@@ -137,7 +125,6 @@ object LlmClient {
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
                     val rawResponse = response.body?.string() ?: "{}"
-                    Log.i("TEST", rawResponse)
                     JSONObject(rawResponse).optJSONArray("choices")?.optJSONObject(0)
                         ?.optJSONObject("message")
                 } else {
@@ -147,6 +134,236 @@ object LlmClient {
             }
         } catch (e: Exception) {
             Log.e(ProxySettingsRepository.TAG, "REST LLM Network Error", e)
+            null
+        }
+    }
+
+    private fun appendFullTurnToMessages(
+        messagesArray: JSONArray,
+        turn: ChatTurn,
+        useNativeTools: Boolean
+    ) {
+        // User message (text + image if present)
+        if (turn.userQuery.isNotBlank() || !turn.userImageUrl.isNullOrBlank()) {
+            messagesArray.put(JSONObject().apply {
+                put("role", "user")
+                if (!turn.userImageUrl.isNullOrBlank()) {
+                    put("content", JSONArray().apply {
+                        if (turn.userQuery.isNotBlank()) {
+                            put(JSONObject().apply {
+                                put("type", "text")
+                                put("text", turn.userQuery)
+                            })
+                        }
+                        put(JSONObject().apply {
+                            put("type", "image_url")
+                            put("image_url", JSONObject().apply {
+                                put("url", turn.userImageUrl)
+                            })
+                        })
+                    })
+                } else {
+                    put("content", turn.userQuery)
+                }
+            })
+        }
+
+        // Tools executed during this turn (calls + exact answers)
+        if (turn.toolsUsed.isNotEmpty()) {
+            if (useNativeTools) {
+                val toolCallsJson = JSONArray()
+                turn.toolsUsed.forEachIndexed { idx, record ->
+                    val resolvedCallId = record.callId.ifBlank { "${turn.turnId}_call_$idx" }
+                    val argsJson = JSONObject().put("query", record.query).toString()
+                    toolCallsJson.put(JSONObject().apply {
+                        put("id", resolvedCallId)
+                        put("type", "function")
+                        put("function", JSONObject().apply {
+                            put("name", record.name)
+                            put("arguments", argsJson)
+                        })
+                    })
+                }
+
+                // Assistant message that triggered the tool calls (plus any spoken filler/buffer)
+                messagesArray.put(JSONObject().apply {
+                    put("role", "assistant")
+                    put("content", turn.toolBufferResponse?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
+                    put("tool_calls", toolCallsJson)
+                })
+
+                // Individual tool result messages matching each tool_call_id
+                turn.toolsUsed.forEachIndexed { idx, record ->
+                    val resolvedCallId = record.callId.ifBlank { "${turn.turnId}_call_$idx" }
+                    messagesArray.put(JSONObject().apply {
+                        put("role", "tool")
+                        put("tool_call_id", resolvedCallId)
+                        put("name", record.name)
+                        put("content", record.answer.ifBlank { "(kein Ergebnis)" })
+                    })
+                }
+            } else {
+                // Fallback formatting for models without native OpenAI tool_calls role support
+                val toolSummaryBlock = buildString {
+                    if (!turn.toolBufferResponse.isNullOrBlank()) {
+                        appendLine(turn.toolBufferResponse!!.trim())
+                    }
+                    turn.toolsUsed.forEach { record ->
+                        appendLine("[Tool ausgeführt: ${record.name} | Anfrage: ${record.query}]")
+                        appendLine("[Tool-Ergebnis: ${record.answer.ifBlank { "(kein Ergebnis)" }}]")
+                    }
+                }.trim()
+
+                if (toolSummaryBlock.isNotBlank()) {
+                    messagesArray.put(JSONObject().apply {
+                        put("role", "assistant")
+                        put("content", toolSummaryBlock)
+                    })
+                }
+            }
+        } else if (!turn.toolBufferResponse.isNullOrBlank()) {
+            // Filler spoken before an external/app tool even if toolsUsed wasn't populated
+            messagesArray.put(JSONObject().apply {
+                put("role", "assistant")
+                put("content", turn.toolBufferResponse)
+            })
+        }
+
+        // Final assistant response
+        if (turn.llmResponse.isNotBlank()) {
+            messagesArray.put(JSONObject().apply {
+                put("role", "assistant")
+                put("content", turn.llmResponse)
+            })
+        }
+    }
+
+    suspend fun summarizeUserKnowledge(
+        userId: String,
+        turnsOverride: List<ChatTurn>? = null,
+        autoTrigger: Boolean = false
+    ): String? = withContext(Dispatchers.IO) {
+        if (userId.isBlank()) return@withContext null
+
+        val knowledge = DataBaseClient.getUserKnowledge(userId)
+        val maxTurns = ProxySettingsRepository.auto_summary_interval
+
+        val effectiveTurnsOverride = if (autoTrigger) {
+            val totalTurns = knowledge.history.size
+            val shouldCompress = totalTurns >= maxTurns &&
+                    (knowledge.chatSummary.isBlank() || totalTurns % maxTurns == 0)
+            if (!shouldCompress) return@withContext knowledge.chatSummary
+            knowledge.history.takeLast(maxTurns)
+        } else {
+            turnsOverride
+        }
+
+        val turns = effectiveTurnsOverride ?: knowledge.history
+        if (turns.isEmpty() && knowledge.chatSummary.isBlank()) return@withContext knowledge.chatSummary
+
+        val transcript = buildString {
+            if (knowledge.chatSummary.isNotBlank()) {
+                appendLine("### Bisheriges Nutzerprofil:")
+                appendLine(knowledge.chatSummary.trim())
+                appendLine()
+            }
+            appendLine("### Gesprächszüge:")
+            turns.forEachIndexed { idx, turn ->
+                val turnNum = idx + 1
+                if (!turn.userImageUrl.isNullOrBlank()) {
+                    appendLine("[$turnNum] Nutzer-Kamera/Bild: [Bild wurde gezeigt]")
+                }
+                if (turn.userQuery.isNotBlank()) {
+                    appendLine("[$turnNum] Nutzer: ${turn.userQuery.trim()}")
+                }
+                if (!turn.toolBufferResponse.isNullOrBlank()) {
+                    appendLine("[$turnNum] Pepper (Zwischenansage): ${turn.toolBufferResponse!!.trim()}")
+                }
+                if (turn.toolsUsed.isNotEmpty()) {
+                    turn.toolsUsed.forEach { record ->
+                        appendLine("[$turnNum] Tool '${record.name}' (Query: ${record.query}) -> Ergebnis: ${record.answer}")
+                    }
+                }
+                if (turn.llmResponse.isNotBlank()) {
+                    appendLine("[$turnNum] Pepper: ${turn.llmResponse.trim()}")
+                }
+            }
+        }.trim()
+
+        val summaryPrompt = """
+            Du verwaltest das sitzungsübergreifende Langzeitgedächtnis und Interaktionsprotokoll des humanoiden Roboters Pepper.
+            Erstelle aus dem bisherigen Gedächtnisstand und den neuen Gesprächszügen eine kompakte, strukturierte Zusammenfassung, damit Pepper (inklusive nachgelagerter Informationssuche über RAG-Abfragen oder Internet-Abfragen) in späteren Zügen oder Sitzungen nahtlos anknüpfen kann, ohne bereits vermittelte Fakten zu wiederholen oder bereits getestete Schritte erneut vorzuschlagen.
+        
+            Strukturiere die Ausgabe exakt in diese drei Abschnitte:
+    
+            ### Personenprofil
+            - Identität & Kontext (Name, Alter, Studium/Beruf, Hintergrund, relevante Bezugspersonen) falls erwähnt
+            - Interessen, Vorlieben, Abneigungen, Gewohnheiten & bevorzugter Gesprächsstil (z. B. technisch vs. laienverständlich, knapp vs. detailliert)
+            
+            ### Wissensstand der Person
+            - Vorwissen: Welche Probleme, Ursachen oder Zusammenhänge kannte die Person bereits von sich aus?
+            - Bereits vermitteltes Wissen: Welche Fakten, Erklärungen, Regeln oder RAG-Inhalte wurden der Person bereits mitgeteilt oder gemeinsam erarbeitet (müssen nicht erneut erklärt werden)?
+            - Offene Wissenslücken: Was wusste die Person ausdrücklich nicht oder hat sie missverstanden?
+            
+            ### Interaktions- & Aufgabenprotokoll
+            - Ausgangslage / Ziel: Worum ging es in der Sitzung bzw. im Experiment (z. B. konkretes Problem, Gerät, Aufgabe)?
+            - Durchgeführte Schritte & Ergebnisse: Was wurde gemeinsam ausprobiert, geprüft oder besprochen – und was hat funktioniert bzw. nicht funktioniert?
+            - Gemeinsame Erkenntnisse & aktueller Stand: Was wurde zusammen herausgefunden oder gelöst, und welche offenen Punkte oder nächsten Schritte stehen als Nächstes an?
+            
+            Regeln:
+            - Zustand fortschreiben: Integriere neue Erkenntnisse in den bestehenden Stand. Wenn sich ein Status ändert (z. B. ein zuvor unbekannter Fakt wurde erklärt oder ein Schritt wurde inzwischen getestet), aktualisiere den Eintrag entsprechend.
+            - Epistemische Genauigkeit: Trenne strikt zwischen dem, was die Person selbst schon wusste, und dem, was erst durch Pepper oder gemeinsame Prüfung eingebracht wurde.
+            - Relevanz: Streiche inhaltsleeren Smalltalk und reine Höflichkeitsfloskeln, behalte aber alle personen-, wissens- und aufgabenrelevanten Aussagen sowie Bestätigungen und Fehlschläge bei.
+            - Keine Halluzinationen: Erfinde NIEMALS Fakten, Diagnosen oder Vermutungen hinzu. Wenn keine neuen relevanten Informationen vorliegen, gib den bisherigen Stand unverändert zurück.
+            - Format: Prägnante Stichpunkte in der dritten Person (auf Deutsch, außer es wurde eine andere Sprache verwendet), ohne Einleitung oder Schlusswort.
+        """.trimIndent()
+
+        val apiEndpoint = ProxySettingsRepository.customLlmEndpoint
+        val apiModel = ProxySettingsRepository.customLlmModel
+        val apiKey = ProxySettingsRepository.customLlmKey
+        if (apiEndpoint.isBlank() || apiModel.isBlank()) return@withContext null
+
+        val reqBody = JSONObject().apply {
+            put("model", apiModel)
+            put("temperature", 0.2)
+            put("messages", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "system")
+                    put("content", summaryPrompt)
+                })
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", transcript)
+                })
+            })
+        }.toString().toRequestBody("application/json".toMediaType())
+
+        val request = Request.Builder()
+            .url("$apiEndpoint/chat/completions")
+            .authBearer(apiKey)
+            .post(reqBody)
+            .build()
+
+        return@withContext try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.e(ProxySettingsRepository.TAG, "Summary LLM HTTP ${response.code}")
+                    return@use null
+                }
+                val rawResponse = response.body?.string() ?: "{}"
+                val updatedSummary = JSONObject(rawResponse)
+                    .optJSONArray("choices")?.optJSONObject(0)
+                    ?.optJSONObject("message")?.optString("content")
+                    ?.trim()
+
+                if (!updatedSummary.isNullOrBlank()) {
+                    DataBaseClient.updateSummary(userId, updatedSummary)
+                    DashboardManager.syncHistoryToBrowser(userId)
+                }
+                updatedSummary
+            }
+        } catch (e: Exception) {
+            Log.e(ProxySettingsRepository.TAG, "Summary LLM Network Error", e)
             null
         }
     }

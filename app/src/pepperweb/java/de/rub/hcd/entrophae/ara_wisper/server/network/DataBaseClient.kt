@@ -235,6 +235,7 @@ object DataBaseClient {
 
         try {
             val jsonBody = JSONObject().apply {
+                put("userId", userId)
                 put("summary", newSummary)
             }.toString().toRequestBody("application/json".toMediaType())
 

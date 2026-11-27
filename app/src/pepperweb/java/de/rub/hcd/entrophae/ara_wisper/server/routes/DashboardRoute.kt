@@ -269,6 +269,9 @@ private suspend fun DefaultWebSocketServerSession.handleDashboardCommand(rawJson
             ProxySettingsRepository.Dashboard.Events.UPDATE_USER_KNOWLEDGE -> {
                 processUpdateUserKnowledge(json, viewModel)
             }
+            ProxySettingsRepository.Dashboard.Events.GENERATE_USER_SUMMARY -> {
+                processGenerateUserSummary(json)
+            }
             ProxySettingsRepository.Dashboard.Events.DELETE_USER -> {
                 processDeleteUser(json, viewModel)
             }
@@ -422,6 +425,25 @@ private suspend fun processUpdateUserKnowledge(json: JSONObject, viewModel: Chat
         }
     }
     DashboardManager.syncHistoryToBrowser(userId)
+}
+
+private suspend fun DefaultWebSocketServerSession.processGenerateUserSummary(json: JSONObject) {
+    val userId = json.optString("userId")
+    if (userId.isEmpty()) return
+
+    Log.i("AraWisper", "Processing WebSocket user summary update for: $userId")
+
+    val updatedSummary = LlmClient.summarizeUserKnowledge(userId)
+    if (updatedSummary != null) {
+        sendJsonToClient(
+            WebSocketPayloads.dashboardPayload(
+                ProxySettingsRepository.Dashboard.Events.STATUS_UPDATE,
+                "User summary created!"
+            )
+        )
+    } else {
+        DashboardManager.sendError("Could not generate summary for '$userId'.")
+    }
 }
 
 private suspend fun DefaultWebSocketServerSession.processToggleLLMMode() {

@@ -463,8 +463,18 @@ class ProxyPipelineManager(
         )
 
         if (!waitingForTool && !cancelled) {
-            pipelineContext.turn.persist()
-            logTurnState("Finished", pipelineContext.turn)
+            val turn = pipelineContext.turn
+            turn.persist()
+            logTurnState("Finished", turn)
+
+            if (!turn.isSystemEvent && turn.userQuery.isNotBlank()) {
+                serverScope.launch(Dispatchers.IO) {
+                    LlmClient.summarizeUserKnowledge(
+                        userId = turn.userId,
+                        autoTrigger = true
+                    )
+                }
+            }
         }
     }
 

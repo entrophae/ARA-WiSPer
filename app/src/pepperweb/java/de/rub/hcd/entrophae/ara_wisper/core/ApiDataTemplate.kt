@@ -99,6 +99,7 @@ object ApiDataTemplate {
     }
 
     object Database : SettingGroup() {
+        val AUTO_SUMMARY_INTERVAL = SettingKey(ProxySettingsRepository.Settings.AUTO_SUMMARY_INTERVAL, labelRes = R.string.label_auto_summary_interval, type = "number", min = 1F, max = 99999F, step = 1F)
         val PERSON_ENDPOINT = SettingKey(ProxySettingsRepository.Settings.PERSON_DB_API_ENDPOINT, labelRes = R.string.label_person_db_api, type = "url", placeholderRes = R.string.placeholder_custom_endpoint)
         val PERSON_KEY = SettingKey(ProxySettingsRepository.Settings.PERSON_DB_KEY, labelRes = R.string.label_person_db_key, type = "password")
         val FACT_ENDPOINT = SettingKey(ProxySettingsRepository.Settings.FACT_DB_API_ENDPOINT, labelRes = R.string.label_fact_db_api, type = "url", placeholderRes = R.string.placeholder_custom_endpoint)

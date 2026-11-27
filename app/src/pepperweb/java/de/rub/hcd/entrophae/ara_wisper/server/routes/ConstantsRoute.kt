@@ -52,6 +52,8 @@ fun Route.constantsRouting(viewModel: ChatViewModel) {
 
             "MSG_${ProxySettingsRepository.Dashboard.Events.UPDATE_USER_KNOWLEDGE}" to ProxySettingsRepository.Dashboard.Events.UPDATE_USER_KNOWLEDGE,
 
+            "MSG_${ProxySettingsRepository.Dashboard.Events.GENERATE_USER_SUMMARY}" to ProxySettingsRepository.Dashboard.Events.GENERATE_USER_SUMMARY,
+
             "MSG_${ProxySettingsRepository.Dashboard.Events.CLEAR_HISTORY}" to ProxySettingsRepository.Dashboard.Events.CLEAR_HISTORY,
 
             // VAD Models
